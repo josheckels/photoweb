@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+
+<project name="photoGallery" basedir="../" default="deploy_local">
+
+    <target name="makeDirs">
+        <mkdir dir="./build"/>
+        <mkdir dir="./build/classes"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="./build"/>
+    </target>
+
+    <target name="jarOR" depends="all">
+        <jar jarfile="./build/ObjectRelational.jar" basedir="./build/classes"
+             excludes="com/stampysoft/photoGallery/**"/>
+    </target>
+
+    <target name="deploy_local" depends="all">
+        <property name="deploymentRoot" value="C:/tomcat/webapps/ROOT"/>
+        <antcall target="deploy_sub"/>
+    </target>
+
+    <target name="deploy_prod" depends="all">
+        <property name="deploymentRoot" value="k:/jeckels/"/>
+        <antcall target="deploy_sub"/>
+    </target>
+
+    <target name="deploy_sub" depends="all">
+        <copy todir="${deploymentRoot}/WEB-INF/classes">
+            <fileset dir="./build/classes">
+                <include name="**/*.class"/>
+            </fileset>
+        </copy>
+
+        <copy todir="${deploymentRoot}/WEB-INF/classes">
+            <fileset dir="./src">
+                <include name="config.properties"/>
+            </fileset>
+        </copy>
+
+        <copy todir="${deploymentRoot}">
+			<fileset dir="./webapp" />
+		</copy>
+        <copy todir="${deploymentRoot}/WEB-INF/lib">
+            <fileset dir="./lib">
+                <include name="*.jar"/>
+                <exclude name="servlet.jar"/>
+            </fileset>
+        </copy>
+
+        <copy todir="${deploymentRoot}/WEB-INF/lib">
+            <fileset dir="./build">
+                <include name="PhotoGallery.jar"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <path id="build.classpath">
+        <pathelement location="./lib/servlet.jar"/>
+        <pathelement location="./lib/jdom.jar"/>
+        <pathelement location="./lib/rome-0.6.jar"/>
+        <pathelement location="./lib/metadata-extractor-2.2.2.jar"/>
+        <pathelement location="./lib/hibernate3.jar"/>
+        <pathelement location="./lib/kaptcha-2.3.jar"/>
+    </path>
+
+    <path id="run.classpath">
+        <path refid="build.classpath"/>
+        <pathelement location="./lib/postgresql.jar"/>
+        <pathelement location="./build/PhotoGallery.jar"/>
+    </path>
+
+    <target name="all" depends="makeDirs">
+        <javac debug="true" srcdir="./src" destdir="./build/classes" target="1.5">
+            <classpath refid="build.classpath"/>
+        </javac>
+
+        <copy todir="./build/classes">
+            <fileset dir="./src">
+                <exclude name="**/*.java"/>
+            </fileset>
+        </copy>
+
+        <jar jarfile="./build/PhotoGallery.jar" basedir="./build/classes"/>
+    </target>
+</project>

@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<!DOCTYPE hibernate-mapping PUBLIC
+    "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
+    "http://hibernate.sourceforge.net/hibernate-mapping-3.0.dtd">
+
+<hibernate-mapping>
+    <class name="com.stampysoft.photoGallery.Photo" table="photo">
+        <id name="photoId" column="photo_id">
+            <generator class="increment"/>
+        </id>
+        <property name="filename"/>
+        <property name="caption"/>
+        <property name="height"/>
+        <property name="width"/>
+        <property name="movie"/>
+        <many-to-one name="photographer" column="photographer_id" class="com.stampysoft.photoGallery.Photographer"/>
+        <property name="private"/>
+
+        <set name="categories" table="photo_category_link">
+            <key column="photo_id"/>
+            <many-to-many column="category_id" class="com.stampysoft.photoGallery.Category"/>
+        </set>
+
+        <set name="defaultPhotoForCategories" table="category" inverse="true">
+            <key column="default_photo_id"/>
+            <one-to-many class="com.stampysoft.photoGallery.Category"/>
+        </set>
+
+        <set name="comments" table="comment" sort="natural">
+            <key column="photo_id"/>
+            <one-to-many class="com.stampysoft.photoGallery.Comment"/>
+        </set>
+    </class>
+
+</hibernate-mapping>

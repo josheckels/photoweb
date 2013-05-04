@@ -1,0 +1,25 @@
+body, div, td, th, table, img, form, p
+{
+    font-family: arial, verdana, helvetica, sans-serif;
+}
+
+a:hover
+{
+    text-decoration: underline;
+}
+
+a
+{
+    text-decoration: none;
+}
+
+a img
+{
+	color: #000000;
+	border: 1px solid #000000;
+}
+
+.noborder
+{
+    border: 0;
+}

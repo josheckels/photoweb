@@ -1,0 +1,15 @@
+You'll need to edit src/config.properties to get things running.
+
+DatabaseURL, JDBCDriver, DatabaseUsername, and DatabasePassword are all JDBC-related settings. The software should work on pretty much any SQL database, with the exception of the INSERT code. I use Postgres, and it's set up to use Postgres' auto-incrementing primary key data type. The CREATE TABLE statements are in sql/createTables.sql.
+
+TempDirectory is the place where it will stick the resized image files. For the full size image, it just copies the file into that directory to match the naming convention, which is [PHOTO_ID]-[WIDTH]x[HEIGHT].jpg.
+
+PhotosDirectory is the place where it looks for the source images. It should pick up any .jpg files in that directory. It doesn't search subdirectories.
+
+TempDirectoryRelativeURL is the relative URL the servlet prepends to the resized image's filename, and then sends the web browser a redirect. I have Tomcat configured to map URLs that start with TempDirectoryRelativeURL to the TempDirectory.
+
+com.stampysoft.photoGallery.admin.AdminFrame is the admin tool. Assuming you've got your config.properties set up correctly, you should be able to click on the "Scan for new photos" button and it will import all the images in PhotosDirectory. Right click on the "Photo Gallery" node in the tree to add categories. You can edit the categories by renaming the nodes and right clicking.
+
+In the list of photos, photos that haven't been put in a category are show in red. Click on one, drag and drop categories into the Categories list, add a caption, save, and you're all set. The UI's a bit clunky but works.
+
+The webapp directory contains the JSPs, taglibs, and servlet configuration stuff you should need.
