@@ -1,5 +1,7 @@
 package com.stampysoft.photoGallery.common;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
 import java.util.*;
 
 /**
@@ -11,6 +13,9 @@ public abstract class BasePhoto //implements IsSerializable
     public static final int THUMBNAIL_MAX_DIMENSION = 210;
     public static final int TINY_PREVIEW_MAX_DIMENSION = 70;
     public static final int DEFAULT_MAX_DIMENSION = 700;
+    public static final int RETINA_DEFAULT_MAX_DIMENSION = 1400;
+    public static final int LARGE_RETINA_DEFAULT_MAX_DIMENSION = 2100;
+    public static final int RETINA_THUMBNAIL_MAX_DIMENSION = 420;
     protected Long _photoId = Long.MIN_VALUE;
     protected String _filename;
     protected String _caption;
@@ -18,26 +23,31 @@ public abstract class BasePhoto //implements IsSerializable
     protected int _height = -1;
     protected boolean _movie = false;
 
+    @JsonSerialize
     public Long getPhotoId()
     {
         return _photoId;
     }
 
+    @JsonSerialize
     public String getFilename()
     {
         return _filename;
     }
 
+    @JsonSerialize
     public String getCaption()
     {
         return _caption;
     }
 
+    @JsonSerialize
     public int getWidth()
     {
         return _width;
     }
 
+    @JsonSerialize
     public int getHeight()
     {
         return _height;
@@ -139,6 +149,21 @@ public abstract class BasePhoto //implements IsSerializable
         return getDimensionForMaxSize(DEFAULT_MAX_DIMENSION);
     }
 
+    public Resolution getRetinaDimensions()
+    {
+        return getDimensionForMaxSize(RETINA_DEFAULT_MAX_DIMENSION);
+    }
+
+    public Resolution getLargeRetinaDimensions()
+    {
+        return getDimensionForMaxSize(LARGE_RETINA_DEFAULT_MAX_DIMENSION);
+    }
+
+    public Resolution getRetinaThumbnailDimensions()
+    {
+        return getDimensionForMaxSize(RETINA_THUMBNAIL_MAX_DIMENSION);
+    }
+
     public String getMovieURI()
     {
         return getDefaultDimensions().getURI() + "?movie=true";
@@ -165,8 +190,11 @@ public abstract class BasePhoto //implements IsSerializable
         List<Resolution> result = new ArrayList<Resolution>();
 
         result.add(getDefaultDimensions());
+        result.add(getRetinaDimensions());
+        result.add(getLargeRetinaDimensions());
         result.add(getTinyPreviewDimensions());
         result.add(getThumbnailDimensions());
+        result.add(getRetinaThumbnailDimensions());
 
         if (getWidth() >= getHeight())
         {

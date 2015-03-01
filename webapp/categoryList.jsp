@@ -4,7 +4,7 @@
 
 <html>
 <head><title>Category List</title>
-    <link rel="alternate" type="application/rss+xml" title="Josh Eckels' Homepage RSS Feed"
+    <link rel="alternate" type="application/rss+xml" title="Josh Eckels Homepage RSS Feed"
           href="http://www.jeckels.com/categoryRSS">
 
     <link href="stylesheet.css" type="text/css" rel="stylesheet"/>
@@ -26,10 +26,10 @@
     <jsp:useBean id="Categories" scope="request" type="java.util.List<com.stampysoft.photoGallery.Category>"/>
     <c:forEach var="category" items="${Categories}">
         <c:forEach var="parentCategory" items="${category.pathToRoot}">
-            <a href="categoryBrowser?CategoryId=<c:out default="ROOT" value="${parentCategory.categoryId}"/>"><c:out
+            <a href="/category/<c:out default="" value="${parentCategory.categoryId}"/>"><c:out
                 value="${parentCategory.description}"/></a>:
         </c:forEach>
-        <a href="categoryBrowser?CategoryId=<c:out default="ROOT" value="${category.categoryId}"/>"><c:out value="${category.description}"/></a>
+        <a href="/category/<c:out default="" value="${category.categoryId}"/>"><c:out value="${category.description}"/></a>
         <br />
     </c:forEach>
 

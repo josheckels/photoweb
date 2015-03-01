@@ -1,12 +1,15 @@
 package com.stampysoft.photoGallery.servlet;
 
-import com.stampysoft.servlet.AbstractServlet;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.stampysoft.photoGallery.Category;
 import com.stampysoft.photoGallery.PhotoOperations;
+import com.stampysoft.servlet.AbstractServlet;
 
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.ServletException;
 import java.io.IOException;
 import java.util.List;
 
@@ -23,10 +26,21 @@ public class CategoryListServlet extends AbstractServlet
 
         List<Category> categories = PhotoOperations.getPhotoOperations().getAllCategories(includePrivate, sortByCreation);
 
-        request.setAttribute("DescriptionSort", !sortByCreation);
-        request.setAttribute("CreationSort", sortByCreation);
-        request.setAttribute("Categories", categories);
+        if ("true".equals(request.getParameter("json")))
+        {
+            response.setContentType("application/json; charset=utf-8");
+            JsonGenerator jg = new JsonFactory().createGenerator(response.getWriter());
+            jg.useDefaultPrettyPrinter();
+            jg.setCodec(new ObjectMapper());  // makes the generator annotation aware
+            jg.writeObject(categories);
+        }
+        else
+        {
+            request.setAttribute("DescriptionSort", !sortByCreation);
+            request.setAttribute("CreationSort", sortByCreation);
+            request.setAttribute("Categories", categories);
 
-        getServletContext().getRequestDispatcher("/categoryList.jsp").forward(request, response);
+            getServletContext().getRequestDispatcher("/categoryList.jsp").forward(request, response);
+        }
     }
 }

@@ -6,6 +6,8 @@
 
 package com.stampysoft.photoGallery;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.stampysoft.photoGallery.common.BaseCategory;
 
 import java.util.*;
@@ -13,6 +15,8 @@ import java.util.*;
 /**
  * @author josh
  */
+@JsonAutoDetect(fieldVisibility= JsonAutoDetect.Visibility.NONE,
+        getterVisibility= JsonAutoDetect.Visibility.NONE, isGetterVisibility= JsonAutoDetect.Visibility.NONE)
 public class Category extends BaseCategory implements Comparable<Category>
 {
     protected Category _parentCategory;
@@ -24,13 +28,18 @@ public class Category extends BaseCategory implements Comparable<Category>
     {
     }
 
+    @JsonSerialize
     public Long getParentCategoryId()
     {
-        return getParentCategory().getCategoryId();
+        return getParentCategory() == null ? null : getParentCategory().getCategoryId();
     }
 
     public List<Category> getPathToRoot()
     {
+        if (_categoryId == null)
+        {
+            return Collections.emptyList();
+        }
         Category mergedThis = PhotoOperations.getPhotoOperations().merge(this);
         Category parentCategory = mergedThis.getParentCategory();
         if (parentCategory == null)

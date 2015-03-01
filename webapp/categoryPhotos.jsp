@@ -5,9 +5,6 @@
     <p><font size="-1">Photographer: <c:out value="${Photographer.name}"/></font></p>
 </c:if>
 
-<!-- <p><font size="-1"><a href="/com.stampysoft.photoGallery.RichUI/RichUI.html#<c:out
-    value="${Category.categoryId}"/>">View in new user interface</a></font></p> -->
-
 <table width="100%">
     <tr>
         <td>
@@ -18,7 +15,7 @@
                         <div
                             style="text-align: center; background-color: #F4F4F4; width: 225px; height: 275px; vertical-align: middle; padding: 3px;">
                             <a name="Photo<c:out value="${photo.photoId}" />"><a
-                                href="photoDetail?PhotoId=<c:out value="${photo.photoId}" />&ReferringCategoryId=<c:out value="${Category.categoryId}"/>"><img
+                                href="/category/<c:out value="${Category.categoryId}"/>/<c:out value="${photo.photoId}" />"><img
                                 vspace="10"
                                 height="<fmt:formatNumber value="${photo.thumbnailDimensions.height}"/>"
                                 width="<fmt:formatNumber value="${photo.thumbnailDimensions.width}"/>"

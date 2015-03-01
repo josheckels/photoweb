@@ -11,7 +11,6 @@
 <jsp:useBean id="NextPreviews" scope="request" type="java.util.List<com.stampysoft.photoGallery.Photo>"/>
 <jsp:useBean id="photo" scope="request" type="com.stampysoft.photoGallery.Photo"/>
 <jsp:useBean id="Category" scope="request" type="com.stampysoft.photoGallery.Category" />
-<jsp:useBean id="UserCommentError" scope="request" type="java.lang.String" />
 
 <html>
 <head><title>Photo Detail:
@@ -19,29 +18,16 @@
     <link rel="alternate" type="application/rss+xml" title="Josh Eckels Homepage RSS Feed"
           href="http://www.jeckels.com/categoryRSS">
 
-    <link href="stylesheet.css" type="text/css" rel="stylesheet"/>
+    <link href="/stylesheet.css" type="text/css" rel="stylesheet"/>
 
     <script language="javascript" type="text/javascript">
         <!--keyboard controls-->
 
         var shortcutsEnabled = true;
-        var captchaShown = false;
 
         function disableKeyboardShortcuts()
         {
-            showCaptcha();
             shortcutsEnabled = false;
-        }
-
-        function showCaptcha()
-        {
-            if (!captchaShown)
-            {
-                captchaShown = true;
-                document.getElementById('captchaImage').innerHTML = '<img src="/kaptcha.jpg" height="50" width="200">';
-                document.getElementById('captchaTextLabel').innerHTML = '<font size="-1">Verification text:</font>';
-                document.getElementById('captchaTextField').innerHTML = '<input type="text" name="kaptcha" value="" size="8" onfocus="disableKeyboardShortcuts()" onblur="enableKeyboardShortcuts()" />';
-            }
         }
 
         function enableKeyboardShortcuts()
@@ -67,13 +53,13 @@
              List<PreviewImage> previousPreviews = (List<PreviewImage>)request.getAttribute("PreviousPreviews");
              List<PreviewImage> nextPreviews = (List<PreviewImage>)request.getAttribute("NextPreviews");
              if (!previousPreviews.isEmpty()) { %>
-                    case 37: window.location = "photoDetail?PhotoId=<%= previousPreviews.get(previousPreviews.size() - 1).getPhotoId() %>&ReferringCategoryId=<c:out value="${Category.categoryId}" />"; return false; break;
+                    case 37: window.location = "/category/<c:out value="${Category.categoryId}" />/<%= previousPreviews.get(previousPreviews.size() - 1).getPhotoId() %>"; return false; break;
                     <% }
                  if (!nextPreviews.isEmpty()) { %>
-                    case 39:  window.location = "photoDetail?PhotoId=<%= nextPreviews.get(0).getPhotoId() %>&ReferringCategoryId=<c:out value="${Category.categoryId}" />"; return false; break;
+                    case 39:  window.location = "/category/<c:out value="${Category.categoryId}" />/<%= nextPreviews.get(0).getPhotoId() %>"; return false; break;
                     <% } %>
                     <c:if test="${Category != null}">
-                    case 67:  window.location = "categoryBrowser?CategoryId=<c:out value="${Category.categoryId}"/>#Photo<c:out value="${photo.photoId}"/>"; return false; break;
+                    case 67:  window.location = "/category/<c:out value="${Category.categoryId}"/>#Photo<c:out value="${photo.photoId}"/>"; return false; break;
                     </c:if>
                 }
             }
@@ -84,37 +70,14 @@
     </script>
 </head>
 <body>
-<% if (Boolean.TRUE.equals(request.getSession(true).getAttribute("ShowAds")))
-{ %>
-<div align="center">
-    <script type="text/javascript"><!--
-    google_ad_client = "pub-0439692010885772";
-    google_ad_width = 468;
-    google_ad_height = 60;
-    google_ad_format = "468x60_as";
-    google_ad_type = "text";
-    google_ad_channel = "";
-    google_color_border = "CCCCCC";
-    google_color_bg = "FFFFFF";
-    google_color_link = "000000";
-    google_color_url = "666666";
-    google_color_text = "333333";
-    //--></script>
-    <script type="text/javascript"
-            src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
-    </script>
-    <br/>
-</div>
-<% } %>
 <table align="center" cellpadding="5" cellspacing="0" border="0">
-    <tr><td align="center" colspan="5"><font size="-1" color="red"><c:out value="${UserCommentError}" /></font></td></tr>
     <tr>
         <td valign="center" align="left" width="90" rowspan="2">
             <table align="center" cellpadding="8" cellspacing="4">
                 <c:forEach var="previousPreview" items="${PreviousPreviews}">
                     <tr>
                         <td align="center">
-                            <a href="photoDetail?PhotoId=<c:out value="${previousPreview.photoId}" />&ReferringCategoryId=<c:out value="${Category.categoryId}" />"><img
+                            <a href="/category/<c:out value="${Category.categoryId}" />/<c:out value="${previousPreview.photoId}" />"><img
                                 src="<c:out value="${previousPreview.preview.URI}"/>"
                                 height="<c:out value="${previousPreview.renderDimensions.height}"/>"
                                 width="<c:out value="${previousPreview.renderDimensions.width}"/>"
@@ -140,7 +103,7 @@
                 <c:forEach var="nextPreview" items="${NextPreviews}">
                     <tr>
                         <td align="center">
-                            <a href="photoDetail?PhotoId=<c:out value="${nextPreview.photoId}" />&ReferringCategoryId=<c:out value="${Category.categoryId}" />"><img
+                            <a href="/category/<c:out value="${Category.categoryId}" />/<c:out value="${nextPreview.photoId}" />"><img
                                 src="<c:out value="${nextPreview.preview.URI}"/>"
                                 height="<c:out value="${nextPreview.renderDimensions.height}"/>"
                                 width="<c:out value="${nextPreview.renderDimensions.width}"/>"
@@ -166,7 +129,7 @@
             <c:if test="${Category != null}">
                 <% if (!previousPreviews.isEmpty())
                 { %>
-                <a href="photoDetail?PhotoId=<%= previousPreviews.get(previousPreviews.size() - 1).getPhotoId() %>&ReferringCategoryId=<c:out value="${Category.categoryId}" />"><img
+                <a href="/category/<c:out value="${Category.categoryId}" />/<%= previousPreviews.get(previousPreviews.size() - 1).getPhotoId() %>"><img
                     src="/images/previous.gif" alt="Previous" class="noborder"
                     title="Previous image (or hit the left arrow key)" align="absmiddle" /></a>
                 <% }
@@ -178,17 +141,17 @@
                 <font size="-1">
                     <a href="/">Home</a>:
                     <c:forEach var="parentCategory" items="${Category.pathToRoot}" varStatus="status">
-                        <a href="categoryBrowser?CategoryId=<c:out default="ROOT" value="${parentCategory.categoryId}"/>"><c:out
+                        <a href="/category/<c:out default="" value="${parentCategory.categoryId}"/>"><c:out
                             value="${parentCategory.description}"/></a>:
                     </c:forEach>
 
-                    <a title="Return to category (or hit C)" href="categoryBrowser?CategoryId=<c:out value="${Category.categoryId}"/>#Photo<c:out value="${photo.photoId}"/>">
+                    <a title="Return to category (or hit C)" href="/category/<c:out value="${Category.categoryId}"/>#Photo<c:out value="${photo.photoId}"/>">
                         <c:out value="${Category.description}"/></a>
                 </font>
                 &nbsp;&nbsp;
                 <% if (!nextPreviews.isEmpty())
                 { %>
-                <a href="photoDetail?PhotoId=<%= nextPreviews.get(0).getPhotoId() %>&ReferringCategoryId=<c:out value="${Category.categoryId}" />"><img
+                <a href="/category/<c:out value="${Category.categoryId}" />/<%= nextPreviews.get(0).getPhotoId() %>"><img
                     src="/images/next.gif" alt="Next" border="0" align="absmiddle"
                     title="Next image (or hit the right arrow key)" class="noborder" /></a>
                 <% }
@@ -214,10 +177,10 @@
                         <c:forEach var="category" items="${Categories}">
                             <a href="/">Home</a>:
                             <c:forEach var="parentCategory" items="${category.pathToRoot}" varStatus="status">
-                                <a href="categoryBrowser?CategoryId=<c:out default="ROOT" value="${parentCategory.categoryId}"/>"><c:out
+                                <a href="/category/<c:out default="" value="${parentCategory.categoryId}"/>"><c:out
                                     value="${parentCategory.description}"/></a>:
                             </c:forEach>
-                            <a href="categoryBrowser?CategoryId=<c:out default="ROOT" value="${category.categoryId}"/>#Photo<c:out value="${photo.photoId}"/>"><c:out
+                            <a href="/category/<c:out default="" value="${category.categoryId}"/>#Photo<c:out value="${photo.photoId}"/>"><c:out
                                 value="${category.description}"/></a><br>
                         </c:forEach>
                     </font></td>
@@ -244,53 +207,8 @@
                             <c:if test="${photo.movie}">| <a href="<c:out value="${photo.movieURI}"/>">Movie</a></c:if>
                         </font>
                     </td>
-                </tr><%
-                Set<Comment> comments = (Set<Comment>)request.getAttribute("Comments");
-                if (comments.isEmpty())
-                { %>
-                <tr>
-                    <td><font size="-1" colspan="2"><i>No comments on this photo</i></font></td>
-                </tr><%
-                } %>
-                <c:forEach var="comment" items="${Comments}">
-                    <tr>
-                        <td valign="top"><font size="-1"><c:out value="${comment.name}" /> on <fmt:formatDate value="${comment.createdOn}" />:&nbsp;</font></td>
-                        <td><font size="-1"><c:out value="${comment.comment}" /></font></td>
-                    </tr>
-                </c:forEach>
+                </tr>
             </table>
-
-            <form method="post">
-                <input type="hidden" name="requestedAction" value="submitComment" />
-                <table align="center">
-                    <tr>
-                        <td align="center" colspan="2"><font size="-1" color="red"><c:out value="${UserCommentError}" /></font></td>
-                    </tr>
-                    <tr>
-                        <td align="right"><font size="-1">Your name:</font></td>
-                        <td><input type="text" onfocus="disableKeyboardShortcuts()" onblur="enableKeyboardShortcuts()" name="name" size="30" value="<c:out value="${UserComment.name}" />" /></td>
-                    </tr>
-                    <tr>
-                        <td align="right"><font size="-1">Your email address:</font></td>
-                        <td><input type="text" onfocus="disableKeyboardShortcuts()" onblur="enableKeyboardShortcuts()" name="email" size="30" value="<c:out value="${UserComment.email}" />" /></td>
-                    </tr>
-                    <tr>
-                        <td valign="top" align="right"><font size="-1">Comment:</font></td>
-                        <td><textarea cols="26" onfocus="disableKeyboardShortcuts()" onblur="enableKeyboardShortcuts()" name="comment" rows="3"><c:out value="${UserComment.comment}" /></textarea></td>
-                    </tr>
-                    <tr>
-                        <td />
-                        <td id="captchaImage" />
-                    </tr>
-                    <tr>
-                        <td align="right" id="captchaTextLabel" />
-                        <td id="captchaTextField" />
-                    </tr>
-                    <tr>
-                        <td/><td><input type="submit" value="Submit Comment" /></td>
-                    </tr>
-                </table>
-            </form>
         </td>
     </tr>
 </table>
@@ -307,13 +225,6 @@
 
 </body>
 <script type="text/javascript">
-    <%
-    String error = (String)request.getAttribute("UserCommentError");
-    if (error != null && error.length() > 0)
-        { %>
-        showCaptcha();
-    <% } %>
-
 var availableWidths = new Array();
 var availableHeights = new Array();
 var availableURLs = new Array();

@@ -100,9 +100,7 @@
       </profile>
     </annotationProcessing>
   </component>
-  <component name="CopyrightManager" default="">
-    <module2copyright />
-  </component>
+  <component name="CopyrightManager" default="" />
   <component name="DependenciesAnalyzeManager">
     <option name="myForwardDirection" value="false" />
   </component>
@@ -291,6 +289,7 @@
   <component name="ProjectDictionaryState">
     <dictionary name="Josh">
       <words>
+        <w>eckels</w>
         <w>stampysoft</w>
       </words>
     </dictionary>
@@ -318,7 +317,7 @@
   </component>
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="CVS" />
-    <mapping directory="$PROJECT_DIR$" vcs="CVS" />
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
   </component>
   <component name="WebServicesPlugin" addRequiredLibraries="true" />
   <component name="com.intellij.jsf.UserDefinedFacesConfigs">
@@ -329,6 +328,27 @@
     </option>
   </component>
   <component name="libraryTable">
+    <library name="jackson-annotations-2.5.0">
+      <CLASSES>
+        <root url="jar://$PROJECT_DIR$/lib/jackson-annotations-2.5.0.jar!/" />
+      </CLASSES>
+      <JAVADOC />
+      <SOURCES />
+    </library>
+    <library name="jackson-databind-2.5.0">
+      <CLASSES>
+        <root url="jar://$PROJECT_DIR$/lib/jackson-databind-2.5.0.jar!/" />
+      </CLASSES>
+      <JAVADOC />
+      <SOURCES />
+    </library>
+    <library name="metadata-extractor-2.6.4">
+      <CLASSES>
+        <root url="jar://$PROJECT_DIR$/lib/metadata-extractor-2.6.4.jar!/" />
+      </CLASSES>
+      <JAVADOC />
+      <SOURCES />
+    </library>
     <library name="Postgres">
       <CLASSES>
         <root url="file://$PROJECT_DIR$/lib" />

@@ -18,7 +18,7 @@ import java.util.List;
  */
 public class ResizeAll
 {
-    private static volatile int _index = 5202;
+    private static volatile int _index = 1;
 
     public static void main(String args[]) throws Exception
     {
@@ -41,11 +41,8 @@ public class ResizeAll
                 {
                     try
                     {
-                        if (photo.getWidth() >= photo.getHeight())
-                        {
-                            System.out.println(Thread.currentThread().getName() + " resizing " + (_index + 1) + " of " + photos.size() + ", " + photo.getFilename());
-                            photo.ensureAllResized();
-                        }
+                        System.out.println(Thread.currentThread().getName() + " resizing " + (_index + 1) + " of " + photos.size() + ", " + photo.getFilename());
+                        photo.ensureAllResized();
                     }
                     catch (Exception e)
                     {

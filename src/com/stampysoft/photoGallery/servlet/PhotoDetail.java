@@ -7,7 +7,6 @@
 package com.stampysoft.photoGallery.servlet;
 
 import com.stampysoft.photoGallery.*;
-import com.stampysoft.photoGallery.common.Resolution;
 import com.stampysoft.servlet.AbstractServlet;
 
 import javax.servlet.ServletException;
@@ -23,38 +22,6 @@ import java.util.regex.Matcher;
 public class PhotoDetail extends AbstractServlet
 {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,4}", Pattern.CASE_INSENSITIVE);
-
-    public static class PreviewImage
-    {
-        private final int _index;
-        private final Photo _photo;
-
-        public PreviewImage(int index, Photo photo)
-        {
-            _index = index;
-            _photo = photo;
-        }
-
-        public int getIndex()
-        {
-            return _index;
-        }
-
-        public Resolution getPreview()
-        {
-            return _photo.getTinyPreviewDimensions();
-        }
-
-        public String getCaption()
-        {
-            return _photo.getCaption();
-        }
-
-        public Long getPhotoId()
-        {
-            return _photo.getPhotoId();
-        }
-    }
 
     /**
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
@@ -124,8 +91,8 @@ public class PhotoDetail extends AbstractServlet
             }
         }
 
-        List<PreviewImage> nextPreviews = new ArrayList<PreviewImage>();
-        List<PreviewImage> previousPreviews = new ArrayList<PreviewImage>();
+        List<PreviewImage> nextPreviews = new ArrayList<>();
+        List<PreviewImage> previousPreviews = new ArrayList<>();
 
         String stringCategoryId = request.getParameter("ReferringCategoryId");
         if (stringCategoryId != null)

@@ -1,5 +1,7 @@
 package com.stampysoft.photoGallery.common;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+
 import java.util.Date;
 
 /**
@@ -15,16 +17,19 @@ public abstract class BaseCategory //implements IsSerializable
     protected Date _createdOn = new Date();
     protected boolean _private;
 
+    @JsonSerialize
     public Long getCategoryId()
     {
         return _categoryId;
     }
 
+    @JsonSerialize
     public String getDescription()
     {
         return _description;
     }
 
+    @JsonSerialize
     public Date getCreatedOn()
     {
         return _createdOn;

@@ -15,10 +15,10 @@ import java.util.TreeSet;
 /**
  * @author josh
  */
-public class CategoryListModel extends AbstractListModel
+public class CategoryListModel extends AbstractListModel<Category>
 {
     private boolean _changed;
-    private Set<Category> _categories = new TreeSet<Category>();
+    private Set<Category> _categories = new TreeSet<>();
     private Category[] _array = new Category[0];
 
     public CategoryListModel()
@@ -27,7 +27,7 @@ public class CategoryListModel extends AbstractListModel
 
     public void addCategory(Category category)
     {
-        TreeSet<Category> newCategories = new TreeSet<Category>(_categories);
+        TreeSet<Category> newCategories = new TreeSet<>(_categories);
         newCategories.add(category);
         setCategories(newCategories);
         _changed = true;
@@ -35,7 +35,7 @@ public class CategoryListModel extends AbstractListModel
 
     public void removeCategory(Category category)
     {
-        TreeSet<Category> newCategories = new TreeSet<Category>(_categories);
+        TreeSet<Category> newCategories = new TreeSet<>(_categories);
         newCategories.remove(category);
         setCategories(newCategories);
         _changed = true;
@@ -58,7 +58,7 @@ public class CategoryListModel extends AbstractListModel
         _changed = false;
     }
 
-    public Object getElementAt(int index)
+    public Category getElementAt(int index)
     {
         return _array[index];
     }

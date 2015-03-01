@@ -22,7 +22,7 @@
     </target>
 
     <target name="deploy_prod" depends="all">
-        <property name="deploymentRoot" value="k:/jeckels/"/>
+        <property name="deploymentRoot" value="e:/www/jeckels/"/>
         <antcall target="deploy_sub"/>
     </target>
 
@@ -60,9 +60,13 @@
         <pathelement location="./lib/servlet.jar"/>
         <pathelement location="./lib/jdom.jar"/>
         <pathelement location="./lib/rome-0.6.jar"/>
-        <pathelement location="./lib/metadata-extractor-2.2.2.jar"/>
+        <pathelement location="./lib/metadata-extractor-2.6.4.jar"/>
         <pathelement location="./lib/hibernate3.jar"/>
         <pathelement location="./lib/kaptcha-2.3.jar"/>
+        <pathelement location="./lib/jackson-annotations-2.5.0.jar"/>
+        <pathelement location="./lib/jackson-core-2.5.0.jar"/>
+        <pathelement location="./lib/jackson-databind-2.5.0.jar"/>
+        <pathelement location="${java.home}/lib/rt.jar"/>
     </path>
 
     <path id="run.classpath">
@@ -72,7 +76,8 @@
     </path>
 
     <target name="all" depends="makeDirs">
-        <javac debug="true" srcdir="./src" destdir="./build/classes" target="1.5">
+        <echo message="JAVA_HOME: ${java.home}" />
+        <javac debug="true" srcdir="./src" destdir="./build/classes" target="1.7" verbose="true">
             <classpath refid="build.classpath"/>
         </javac>
 

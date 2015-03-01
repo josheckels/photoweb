@@ -40,7 +40,7 @@ public class CommentRSSServlet extends AbstractRSSServlet
         boolean includePrivate = AbstractServlet.includePrivate(req);
         SyndFeed feed = new SyndFeedImpl();
 
-        feed.setTitle("Josh Eckels' Photo Comment RSS Feed");
+        feed.setTitle("Josh Eckels Photo Comment RSS Feed");
         feed.setLink("http://www.jeckels.com/");
         feed.setDescription("Newest photo comments");
 

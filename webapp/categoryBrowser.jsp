@@ -4,42 +4,40 @@
 
 <html>
 <head><title>Browsing Category: <c:out value="${Category.description}"/></title>
-    <link rel="alternate" type="application/rss+xml" title="Josh Eckels' Homepage RSS Feed"
+    <link rel="alternate" type="application/rss+xml" title="Josh Eckels Homepage RSS Feed"
           href="http://www.jeckels.com/categoryRSS">
 
-    <link href="stylesheet.css" type="text/css" rel="stylesheet"/>
+    <link href="/stylesheet.css" type="text/css" rel="stylesheet"/>
 </head>
 <body>
 
     <h2>
         <a href="/">Home</a> -
         <c:forEach var="parentCategory" items="${PathToRoot}">
-            <a href="categoryBrowser?CategoryId=<c:out default="ROOT" value="${parentCategory.categoryId}"/>"><c:out
+            <a href="/category/<c:out default="" value="${parentCategory.categoryId}"/>"><c:out
                 value="${parentCategory.description}"/></a> -
         </c:forEach>
         <c:out value="${Category.description}"/>
     </h2>
 
-    <c:if test="${Category.parentCategory != null}">
-        <script language="javascript" type="text/javascript">
-            <!--keyboard controls-->
+    <script language="javascript" type="text/javascript">
+        <!--keyboard controls-->
 
-            function keypress(e)
+        function keypress(e)
+        {
+            if (!e) var e = window.event;
+            if (e.keyCode) keyCode = e.keyCode;
+            else if (e.which) keyCode = e.which;
+            if (!e.altKey && !e.ctrlKey && !e.shiftKey && keyCode == 67)
             {
-                if (!e) var e = window.event;
-                if (e.keyCode) keyCode = e.keyCode;
-                else if (e.which) keyCode = e.which;
-                if (!e.altKey && !e.ctrlKey && !e.shiftKey && keyCode == 67)
-                {
-                    window.location = "categoryBrowser?CategoryId=<c:out value="${Category.parentCategory.categoryId}"/>";
-                    return false;
-                }
-                return true;
+                window.location = "/category/<c:out default="" value="${Category.parentCategory.categoryId}"/>";
+                return false;
             }
+            return true;
+        }
 
-            document.onkeydown = keypress;
-        </script>
-    </c:if>
+        document.onkeydown = keypress;
+    </script>
 
     <% if (!((java.util.Collection) request.getAttribute("SubCategories")).isEmpty())
     { %>
@@ -55,11 +53,11 @@
                                 <div
                                     style="text-align: center; background-color: #F4F4F4; width: 225px; height: 275px; vertical-align: middle; padding: 3px;">
                                     <a name="Category<c:out value="${category.categoryId}" />"><a
-                                        href="categoryBrowser?CategoryId=<c:out value="${subCategory.categoryId}"/>">
+                                        href="/category/<c:out value="${subCategory.categoryId}"/>">
                                         <c:if test="${subCategory.defaultPhoto != null }"><img border="0" vspace="10"
                                                                                                height="<fmt:formatNumber value="${subCategory.defaultPhoto.thumbnailDimensions.height}"/>"
                                                                                                width="<fmt:formatNumber value="${subCategory.defaultPhoto.thumbnailDimensions.width}"/>"
-                                                                                               src="<c:out value="${subCategory.defaultPhoto.thumbnailDimensions.URI}"/>"></c:if><br>
+                                                                                               src="<c:out value="${subCategory.defaultPhoto.retinaThumbnailDimensions.URI}"/>"></c:if><br>
                                         <b><c:out value="${subCategory.description}"/></b></a></a>
                                 </div>
                             </div>

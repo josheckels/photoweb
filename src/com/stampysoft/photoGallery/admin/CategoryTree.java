@@ -127,6 +127,8 @@ public class CategoryTree extends JTree
                 final JTextField destinationTextField = new JTextField(30);
                 final JCheckBox landscapeCheckBox = new JCheckBox("Landscape");
                 final JCheckBox portraitCheckBox = new JCheckBox("Portrait");
+                landscapeCheckBox.setSelected(true);
+                portraitCheckBox.setSelected(true);
 
                 GridBagConstraints leftGBC = new GridBagConstraints();
                 GridBagConstraints rightGBC = new GridBagConstraints();
@@ -157,7 +159,7 @@ public class CategoryTree extends JTree
                                 if ((portraitCheckBox.isSelected() && photo.getWidth() <= photo.getHeight()) ||
                                     (landscapeCheckBox.isSelected() && photo.getWidth() >= photo.getHeight()))
                                 {
-                                    File originalFile = new File(new URI(photo.getDefaultDimensions().getURI()));
+                                    File originalFile = new File(new URI(photo.getOriginalDimensions().getURI()));
                                     FileInputStream fIn = null;
                                     FileOutputStream fOut = null;
                                     try
@@ -171,6 +173,10 @@ public class CategoryTree extends JTree
                                             fOut.write(b, 0, i);
                                         }
                                     }
+                                    catch (IOException e1)
+                                    {
+                                        e1.printStackTrace();
+                                    }
                                     finally
                                     {
                                         if (fIn != null)
@@ -179,7 +185,7 @@ public class CategoryTree extends JTree
                                             {
                                                 fIn.close();
                                             }
-                                            catch (IOException ioe)
+                                            catch (IOException ignored)
                                             {
                                             }
                                         }
@@ -189,7 +195,7 @@ public class CategoryTree extends JTree
                                             {
                                                 fOut.close();
                                             }
-                                            catch (IOException ioe)
+                                            catch (IOException ignored)
                                             {
                                             }
                                         }
@@ -199,10 +205,6 @@ public class CategoryTree extends JTree
                             dialog.setVisible(false);
                         }
                         catch (URISyntaxException e1)
-                        {
-                            e1.printStackTrace();
-                        }
-                        catch (IOException e1)
                         {
                             e1.printStackTrace();
                         }

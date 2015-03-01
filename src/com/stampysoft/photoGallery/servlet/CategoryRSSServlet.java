@@ -18,7 +18,7 @@ public class CategoryRSSServlet extends AbstractRSSServlet
         boolean includePrivate = AbstractServlet.includePrivate(req);
         SyndFeed feed = new SyndFeedImpl();
 
-        feed.setTitle("Josh Eckels' Homepage RSS Feed");
+        feed.setTitle("Josh Eckels Homepage RSS Feed");
         feed.setLink("http://www.jeckels.com/");
         feed.setDescription("Newest photo gallery categories");
 
@@ -30,7 +30,7 @@ public class CategoryRSSServlet extends AbstractRSSServlet
             SyndEntry entry = new SyndEntryImpl();
 
             entry.setTitle(category.getDescription());
-            entry.setLink("http://www.jeckels.com/categoryBrowser?CategoryId=" + category.getCategoryId() + "&fromrss=true");
+            entry.setLink("http://www.jeckels.com/category/" + category.getCategoryId());
             entry.setPublishedDate(category.getCreatedOn());
 
             SyndContent description = new SyndContentImpl();

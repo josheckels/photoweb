@@ -22,6 +22,11 @@
     </servlet>
 
     <servlet>
+        <servlet-name>categoryREST</servlet-name>
+        <servlet-class>com.stampysoft.photoGallery.servlet.CategoryRESTServlet</servlet-class>
+    </servlet>
+
+    <servlet>
         <servlet-name>categoryList</servlet-name>
         <servlet-class>com.stampysoft.photoGallery.servlet.CategoryListServlet</servlet-class>
     </servlet>
@@ -94,6 +99,11 @@
     <servlet-mapping>
         <servlet-name>categoryBrowser</servlet-name>
         <url-pattern>/categoryBrowser/*</url-pattern>
+    </servlet-mapping>
+
+    <servlet-mapping>
+        <servlet-name>categoryREST</servlet-name>
+        <url-pattern>/category/*</url-pattern>
     </servlet-mapping>
 
     <servlet-mapping>

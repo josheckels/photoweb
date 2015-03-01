@@ -85,8 +85,10 @@ public class ImageMapper extends AbstractServlet
                 response.setContentType("image/jpeg");
             }
             response.addDateHeader("Last-Modified", f.lastModified());
-            response.addDateHeader("Expires", f.lastModified() + 60 * 60 * 24 * 14);
-            response.setContentLength((int)f.length());
+            int cacheLength = 60 * 60 * 24 * 14;
+            response.addDateHeader("Expires", f.lastModified() + cacheLength);
+            response.addHeader("Cache-Control", "public, max-age=" + cacheLength);
+            response.setContentLength((int) f.length());
             InputStream in = null;
             try
             {

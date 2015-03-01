@@ -12,23 +12,22 @@ import com.drew.metadata.Directory;
 import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
 import com.drew.metadata.Tag;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.stampysoft.photoGallery.common.BasePhoto;
 import com.stampysoft.photoGallery.common.Resolution;
-import com.sun.image.codec.jpeg.JPEGCodec;
-import com.sun.image.codec.jpeg.JPEGEncodeParam;
-import com.sun.image.codec.jpeg.JPEGImageDecoder;
-import com.sun.image.codec.jpeg.JPEGImageEncoder;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.image.AreaAveragingScaleFilter;
-import java.awt.image.BufferedImage;
-import java.awt.image.FilteredImageSource;
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.*;
-import java.util.List;
 
+//import com.sun.image.codec.jpeg.JPEGCodec;
+//import com.sun.image.codec.jpeg.JPEGEncodeParam;
+//import com.sun.image.codec.jpeg.JPEGImageDecoder;
+//import com.sun.image.codec.jpeg.JPEGImageEncoder;
+
+@JsonAutoDetect(fieldVisibility= JsonAutoDetect.Visibility.NONE,
+        getterVisibility= JsonAutoDetect.Visibility.NONE, isGetterVisibility= JsonAutoDetect.Visibility.NONE)
 public class Photo extends BasePhoto implements Comparable<Photo>
 {
     private Set<Category> _categories;
@@ -98,9 +97,9 @@ public class Photo extends BasePhoto implements Comparable<Photo>
                 try
                 {
                     Metadata metadata = JpegMetadataReader.readMetadata(file);
-                    return metadata.getDirectoryIterator();
+                    return metadata.getDirectories().iterator();
                 }
-                catch (JpegProcessingException e)
+                catch (JpegProcessingException | IOException e)
                 {
                     throw new PhotoManipulationException(file.toString(), e);
                 }
@@ -120,7 +119,7 @@ public class Photo extends BasePhoto implements Comparable<Photo>
         while (directories.hasNext())
         {
             Directory directory = directories.next();
-            Iterator<Tag> tags = directory.getTagIterator();
+            Iterator<Tag> tags = directory.getTags().iterator();
             while (tags.hasNext())
             {
                 Tag tag = tags.next();
@@ -180,55 +179,55 @@ public class Photo extends BasePhoto implements Comparable<Photo>
     public void ensureResized(Resolution newResolution, Resolution oldResolution)
         throws PhotoManipulationException, IOException
     {
-
-        File file = new File(PhotoOperations.getPhotoOperations().toURI(newResolution.getURI()));
-
-        String filename = file.getCanonicalPath().intern();
-        synchronized (filename)
-        {
-
-            if (!file.exists() || file.length() == 0)
-            {
-                FileOutputStream fOut = new FileOutputStream(file);
-                BufferedOutputStream bOut = new BufferedOutputStream(fOut, 10000);
-                try
-                {
-
-                    File originalFile = new File(PhotoOperations.getPhotoOperations().toURI(oldResolution.getURI()));
-
-                    FileInputStream fIn = new FileInputStream(originalFile);
-                    JPEGImageDecoder decoder = JPEGCodec.createJPEGDecoder(fIn);
-                    Image inImage = decoder.decodeAsBufferedImage();
-                    fIn.close();
-
-                    AreaAveragingScaleFilter filter = new AreaAveragingScaleFilter(newResolution.width, newResolution.height);
-                    FilteredImageSource filterSource = new FilteredImageSource(inImage.getSource(), filter);
-                    Image output = new JPanel().createImage(filterSource);
-
-                    BufferedImage outImage = new BufferedImage(newResolution.width, newResolution.height, BufferedImage.TYPE_INT_RGB);
-                    // Paint image.
-                    Graphics2D g2d = outImage.createGraphics();
-                    g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                    g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-
-                    g2d.drawImage(output, 0, 0, null);
-                    g2d.dispose();
-
-                    // JPEG-encode the image and write to file.
-                    JPEGImageEncoder encoder = JPEGCodec.createJPEGEncoder(bOut);
-                    JPEGEncodeParam p = encoder.getDefaultJPEGEncodeParam(outImage);
-                    p.setQuality(0.9f, true);
-                    encoder.encode(outImage, p);
-
-                    System.gc();
-                }
-                finally
-                {
-                    bOut.close();
-                }
-            }
-        }
+        throw new UnsupportedOperationException();
+//        File file = new File(PhotoOperations.getPhotoOperations().toURI(newResolution.getURI()));
+//
+//        String filename = file.getCanonicalPath().intern();
+//        synchronized (filename)
+//        {
+//
+//            if (!file.exists() || file.length() == 0)
+//            {
+//                FileOutputStream fOut = new FileOutputStream(file);
+//                BufferedOutputStream bOut = new BufferedOutputStream(fOut, 10000);
+//                try
+//                {
+//
+//                    File originalFile = new File(PhotoOperations.getPhotoOperations().toURI(oldResolution.getURI()));
+//
+//                    FileInputStream fIn = new FileInputStream(originalFile);
+//                    JPEGImageDecoder decoder = JPEGCodec.createJPEGDecoder(fIn);
+//                    Image inImage = decoder.decodeAsBufferedImage();
+//                    fIn.close();
+//
+//                    AreaAveragingScaleFilter filter = new AreaAveragingScaleFilter(newResolution.width, newResolution.height);
+//                    FilteredImageSource filterSource = new FilteredImageSource(inImage.getSource(), filter);
+//                    Image output = new JPanel().createImage(filterSource);
+//
+//                    BufferedImage outImage = new BufferedImage(newResolution.width, newResolution.height, BufferedImage.TYPE_INT_RGB);
+//                    // Paint image.
+//                    Graphics2D g2d = outImage.createGraphics();
+//                    g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+//                    g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+//                    g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+//
+//                    g2d.drawImage(output, 0, 0, null);
+//                    g2d.dispose();
+//
+//                    // JPEG-encode the image and write to file.
+//                    JPEGImageEncoder encoder = JPEGCodec.createJPEGEncoder(bOut);
+//                    JPEGEncodeParam p = encoder.getDefaultJPEGEncodeParam(outImage);
+//                    p.setQuality(0.9f, true);
+//                    encoder.encode(outImage, p);
+//
+//                    System.gc();
+//                }
+//                finally
+//                {
+//                    bOut.close();
+//                }
+//            }
+//        }
     }
 
     public boolean isPrivate()

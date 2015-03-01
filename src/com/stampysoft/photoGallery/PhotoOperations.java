@@ -6,7 +6,6 @@
 
 package com.stampysoft.photoGallery;
 
-import com.stampysoft.photoGallery.common.Resolution;
 import org.hibernate.Query;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -14,7 +13,7 @@ import org.hibernate.cfg.Configuration;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.*;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -53,8 +52,11 @@ public class PhotoOperations
     public Category getCategoryByCategoryId(Long categoryId, boolean includePrivate)
     {
         Session session = getSessionFactory().getCurrentSession();
-        Query query = session.createQuery("from Category where categoryId = :categoryId " + (includePrivate ? "" : "and private = :includePrivate") + " order by description ");
-        query.setLong("categoryId", categoryId);
+        Query query = session.createQuery("from Category where categoryId " + (categoryId == null ? "IS NULL" : "= :categoryId ") + (includePrivate ? "" : " and private = :includePrivate") + " order by description ");
+        if (categoryId != null)
+        {
+            query.setLong("categoryId", categoryId);
+        }
         if (!includePrivate)
         {
             query.setBoolean("includePrivate", includePrivate);

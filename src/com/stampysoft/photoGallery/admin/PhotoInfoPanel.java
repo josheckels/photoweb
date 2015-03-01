@@ -35,7 +35,7 @@ public class PhotoInfoPanel extends AbstractPanel
     private JButton _renameButton = new JButton("Rename files");
     private PhotographerPanel _photographerPanel = new PhotographerPanel();
 
-    private TreeSet _originalCategories = null;
+    private TreeSet<Category> _originalCategories = null;
 
     public PhotoInfoPanel()
     {
@@ -184,13 +184,13 @@ public class PhotoInfoPanel extends AbstractPanel
                     if (newPhotos.length > 1)
                     {
                         AdminFrame.getFrame().setTitle("Photo Gallery: " + newPhotos.length + " photos selected");
-                        TreeSet<Category> commonCategories = new TreeSet<Category>();
+                        TreeSet<Category> commonCategories = new TreeSet<>();
                         commonCategories.addAll(newPhotos[0].getCategories(true));
                         for (int i = 1; i < newPhotos.length; i++)
                         {
-                            for (Iterator common = commonCategories.iterator(); common.hasNext();)
+                            for (Iterator<Category> common = commonCategories.iterator(); common.hasNext();)
                             {
-                                Category category = (Category) common.next();
+                                Category category = common.next();
                                 if (!newPhotos[i].getCategories(true).contains(category))
                                 {
                                     common.remove();
@@ -198,7 +198,7 @@ public class PhotoInfoPanel extends AbstractPanel
                             }
                         }
                         _categoryListModel.setCategories(commonCategories);
-                        _originalCategories = new TreeSet<Category>(commonCategories);
+                        _originalCategories = new TreeSet<>(commonCategories);
                     }
                     else
                     {
