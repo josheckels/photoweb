@@ -151,7 +151,7 @@ public class Photo extends BasePhoto implements Comparable<Photo>
         String directoryName = tag.getDirectoryName();
         String tagName = tag.getTagName();
 
-        if (directoryName.equals("Exif"))
+        if (directoryName.startsWith("Exif"))
         {
             return tagName.equals("F-Number") ||
                 tagName.equals("ISO Speed Ratings") ||
