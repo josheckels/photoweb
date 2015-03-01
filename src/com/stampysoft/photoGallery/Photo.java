@@ -16,15 +16,22 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.stampysoft.photoGallery.common.BasePhoto;
 import com.stampysoft.photoGallery.common.Resolution;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.image.AreaAveragingScaleFilter;
+import java.awt.image.BufferedImage;
+import java.awt.image.FilteredImageSource;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.*;
-
-//import com.sun.image.codec.jpeg.JPEGCodec;
-//import com.sun.image.codec.jpeg.JPEGEncodeParam;
-//import com.sun.image.codec.jpeg.JPEGImageDecoder;
-//import com.sun.image.codec.jpeg.JPEGImageEncoder;
+import java.util.List;
 
 @JsonAutoDetect(fieldVisibility= JsonAutoDetect.Visibility.NONE,
         getterVisibility= JsonAutoDetect.Visibility.NONE, isGetterVisibility= JsonAutoDetect.Visibility.NONE)
@@ -179,55 +186,49 @@ public class Photo extends BasePhoto implements Comparable<Photo>
     public void ensureResized(Resolution newResolution, Resolution oldResolution)
         throws PhotoManipulationException, IOException
     {
-        throw new UnsupportedOperationException();
-//        File file = new File(PhotoOperations.getPhotoOperations().toURI(newResolution.getURI()));
-//
-//        String filename = file.getCanonicalPath().intern();
-//        synchronized (filename)
-//        {
-//
-//            if (!file.exists() || file.length() == 0)
-//            {
-//                FileOutputStream fOut = new FileOutputStream(file);
-//                BufferedOutputStream bOut = new BufferedOutputStream(fOut, 10000);
-//                try
-//                {
-//
-//                    File originalFile = new File(PhotoOperations.getPhotoOperations().toURI(oldResolution.getURI()));
-//
-//                    FileInputStream fIn = new FileInputStream(originalFile);
-//                    JPEGImageDecoder decoder = JPEGCodec.createJPEGDecoder(fIn);
-//                    Image inImage = decoder.decodeAsBufferedImage();
-//                    fIn.close();
-//
-//                    AreaAveragingScaleFilter filter = new AreaAveragingScaleFilter(newResolution.width, newResolution.height);
-//                    FilteredImageSource filterSource = new FilteredImageSource(inImage.getSource(), filter);
-//                    Image output = new JPanel().createImage(filterSource);
-//
-//                    BufferedImage outImage = new BufferedImage(newResolution.width, newResolution.height, BufferedImage.TYPE_INT_RGB);
-//                    // Paint image.
-//                    Graphics2D g2d = outImage.createGraphics();
-//                    g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-//                    g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-//                    g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-//
-//                    g2d.drawImage(output, 0, 0, null);
-//                    g2d.dispose();
-//
-//                    // JPEG-encode the image and write to file.
-//                    JPEGImageEncoder encoder = JPEGCodec.createJPEGEncoder(bOut);
-//                    JPEGEncodeParam p = encoder.getDefaultJPEGEncodeParam(outImage);
-//                    p.setQuality(0.9f, true);
-//                    encoder.encode(outImage, p);
-//
-//                    System.gc();
-//                }
-//                finally
-//                {
-//                    bOut.close();
-//                }
-//            }
-//        }
+        File file = new File(PhotoOperations.getPhotoOperations().toURI(newResolution.getURI()));
+
+        String filename = file.getCanonicalPath().intern();
+        synchronized (filename)
+        {
+
+            if (!file.exists() || file.length() == 0)
+            {
+                File originalFile = new File(PhotoOperations.getPhotoOperations().toURI(oldResolution.getURI()));
+
+                try (FileInputStream fIn = new FileInputStream(originalFile))
+                {
+                    Image inImage = ImageIO.read(fIn);
+
+                    AreaAveragingScaleFilter filter = new AreaAveragingScaleFilter(newResolution.width, newResolution.height);
+                    FilteredImageSource filterSource = new FilteredImageSource(inImage.getSource(), filter);
+                    Image output = new JPanel().createImage(filterSource);
+
+                    BufferedImage outImage = new BufferedImage(newResolution.width, newResolution.height, BufferedImage.TYPE_INT_RGB);
+                    // Paint image.
+                    Graphics2D g2d = outImage.createGraphics();
+                    g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                    g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+
+                    g2d.drawImage(output, 0, 0, null);
+                    g2d.dispose();
+
+                    ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
+                    ImageWriteParam param = writer.getDefaultWriteParam();
+                    param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                    param.setCompressionQuality(0.9f);
+                    IIOImage iioImage = new IIOImage(outImage, null, null);
+                    try (ImageOutputStream out = ImageIO.createImageOutputStream(file))
+                    {
+                        writer.setOutput(out);
+                        writer.write(null, iioImage, param);
+                    }
+
+                    System.gc();
+                }
+            }
+        }
     }
 
     public boolean isPrivate()

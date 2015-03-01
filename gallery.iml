@@ -169,6 +169,7 @@
     <orderEntry type="library" name="jackson-databind-2.5.0" level="project" />
     <orderEntry type="library" name="jackson-annotations-2.5.0" level="project" />
     <orderEntry type="library" name="metadata-extractor-2.6.4" level="project" />
+    <orderEntry type="library" name="xmpcore" level="project" />
   </component>
 </module>
 

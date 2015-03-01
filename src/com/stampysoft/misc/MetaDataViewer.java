@@ -6,14 +6,9 @@ import com.drew.metadata.Metadata;
 import com.drew.metadata.Tag;
 
 import java.io.File;
-import java.util.Iterator;
 
 public class MetaDataViewer
 {
-
-    /**
-     * @param args
-     */
     public static void main(String[] args) throws Exception
     {
         File file = new File("C:\\Documents and Settings\\josh\\Desktop\\Pictures\\Pro\\02_Ceremony", "SteveSmith0154.jpg");
@@ -21,15 +16,10 @@ public class MetaDataViewer
         {
             Metadata metadata = JpegMetadataReader.readMetadata(file);
 
-
-            Iterator<Directory> directories = metadata.getDirectoryIterator();
-            while (directories.hasNext())
+            for (Directory directory : metadata.getDirectories())
             {
-                Directory directory = directories.next();
-                Iterator<Tag> tags = directory.getTagIterator();
-                while (tags.hasNext())
+                for (Tag tag : directory.getTags())
                 {
-                    Tag tag = tags.next();
                     System.out.println(tag.getDirectoryName() + " - " + tag.getTagName() + " - " + tag.getDescription());
                 }
             }
