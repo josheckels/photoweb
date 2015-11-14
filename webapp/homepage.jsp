@@ -68,14 +68,6 @@
                 (J2ME) projects.
             </p>
 
-            <h2>Ads, sweet nourishing ads</h2>
-            <p>
-                And finally, since no web site is complete without at least one advertisement,
-                if you're planning on buying something from Amazon, if you go to their site
-                through <a href="http://www.amazon.com/exec/obidos/redirect-home/josheckelshom-20/">this link</a>
-                and purchase something I'll get some referral money.
-            </p>
-
             <h2>Contact info</h2>
             <p>
                 If, for some reason, you would like to get in touch with me, you can e-mail me at
