@@ -12,6 +12,7 @@ import com.stampysoft.util.Configuration;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Iterator;
 
 /**
  * @author josh
@@ -34,6 +35,16 @@ public class AdminFrame extends JFrame
         {
             Configuration.setConfigFileName(args[0]);
         }
+
+        for (Object key : UIManager.getLookAndFeelDefaults().keySet()) {
+            if(key != null && key.toString().endsWith(".font")) {
+                Font font = UIManager.getFont(key);
+                Font biggerFont = font.deriveFont(2.0f*font.getSize2D());
+                // change ui default to bigger font
+                UIManager.put(key,biggerFont);
+            }
+        }
+
         ResolutionUtil.init();
         SwingUtilities.invokeLater(new Runnable()
         {
