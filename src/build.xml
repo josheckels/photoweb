@@ -22,7 +22,7 @@
     </target>
 
     <target name="deploy_prod" depends="all">
-        <property name="deploymentRoot" value="e:/www/jeckels/"/>
+        <property name="deploymentRoot" value="d:/www/jeckels/"/>
         <antcall target="deploy_sub"/>
     </target>
 

@@ -1,9 +1,15 @@
 package com.stampysoft.photoGallery.common;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * User: Josh
  * Date: Oct 1, 2007
  */
+@JsonAutoDetect(fieldVisibility= JsonAutoDetect.Visibility.NONE,
+        getterVisibility= JsonAutoDetect.Visibility.NONE, isGetterVisibility= JsonAutoDetect.Visibility.NONE)
+
 public class Resolution
 {
 
@@ -41,17 +47,20 @@ public class Resolution
             _uri = RESIZED_BASE_URL + _filename;
         }
     }
-    
+
+    @JsonProperty
     public String getFilename()
     {
         return _filename;
     }
 
+    @JsonProperty
     public int getHeight()
     {
         return height;
     }
 
+    @JsonProperty
     public int getWidth()
     {
         return width;

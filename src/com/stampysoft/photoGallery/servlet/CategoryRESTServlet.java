@@ -52,10 +52,18 @@ public class CategoryRESTServlet extends AbstractServlet
 
         String url = request.getRequestURI();
         boolean json = false;
+        boolean json2 = false;
         if (url.endsWith(".json"))
         {
             json = true;
             url = url.substring(0, url.length() - ".json".length());
+        }
+        if (url.endsWith(".json2"))
+        {
+            json = true;
+            json2 = true;
+
+            url = url.substring(0, url.length() - ".json2".length());
         }
         String[] parts = url.split("/");
         if (parts.length > 2)
@@ -93,14 +101,24 @@ public class CategoryRESTServlet extends AbstractServlet
             return;
         }
 
-        showCategory(request, response, includePrivate, subCategories, category, json);
+        showCategory(request, response, includePrivate, subCategories, category, json, json2);
     }
 
-    private void showCategory(HttpServletRequest request, HttpServletResponse response, boolean includePrivate, List<Category> subCategories, Category category, boolean json) throws ServletException, IOException
+    private void showCategory(HttpServletRequest request, HttpServletResponse response, boolean includePrivate, List<Category> subCategories, Category category, boolean json, boolean json2) throws ServletException, IOException
     {
         List<Photo> photos = new ArrayList<Photo>(category.getPhotos(includePrivate));
 
-        if (json)
+        if (json2)
+        {
+            response.setContentType("application/json; charset=utf-8");
+            response.setHeader("Access-Control-Allow-Origin", "*");
+            JsonGenerator jg = new JsonFactory().createGenerator(response.getWriter());
+            jg.useDefaultPrettyPrinter();
+            jg.setCodec(new ObjectMapper());  // makes the generator annotation aware
+            jg.writeObject(category);
+            return;
+        }
+        else if (json)
         {
             response.setContentType("application/json; charset=utf-8");
             JsonGenerator jg = new JsonFactory().createGenerator(response.getWriter());

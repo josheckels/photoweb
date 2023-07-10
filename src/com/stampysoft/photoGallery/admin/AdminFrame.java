@@ -53,9 +53,9 @@ public class AdminFrame extends JFrame
                 PhotoOperations.getPhotoOperations().beginTransaction();
                 g_frame = new AdminFrame();
 
-                g_frame.setSize(800, 700);
+                g_frame.setSize(1200, 100);
+                g_frame.setExtendedState(g_frame.getExtendedState() | JFrame.MAXIMIZED_BOTH);
                 g_frame.setVisible(true);
-                AdminFrame.getFrame().setExtendedState(Frame.MAXIMIZED_BOTH);
             }
 
         });

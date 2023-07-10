@@ -52,10 +52,10 @@ public class PhotoInfoPanel extends AbstractPanel
 
         JPanel immutablePanel = new JPanel(new BorderLayout());
 
-//		_photoLabel.setMinimumSize( new Dimension( Photo.DEFAULT_MAX_DIMENSION, Photo.DEFAULT_MAX_DIMENSION ) );
+		_photoLabel.setMinimumSize( new Dimension( Photo.DEFAULT_MAX_DIMENSION, Photo.DEFAULT_MAX_DIMENSION * 2 ) );
         _photoLabel.setHorizontalAlignment(SwingConstants.CENTER);
         _photoLabel.setVerticalAlignment(SwingConstants.CENTER);
-        _photoLabel.setPreferredSize(new Dimension(Photo.DEFAULT_MAX_DIMENSION, Photo.DEFAULT_MAX_DIMENSION));
+        _photoLabel.setPreferredSize(new Dimension(Photo.DEFAULT_MAX_DIMENSION, Photo.DEFAULT_MAX_DIMENSION * 2));
         immutablePanel.add(new JScrollPane(_photoLabel), BorderLayout.CENTER);
 
         JPanel mutablePanel = new JPanel(new GridBagLayout());
@@ -63,8 +63,10 @@ public class PhotoInfoPanel extends AbstractPanel
         labelGBC.anchor = GridBagConstraints.WEST;
         GridBagConstraints valueGBC = new GridBagConstraints();
         valueGBC.weightx = 1.0;
+        valueGBC.weighty = 1.0;
         valueGBC.gridwidth = GridBagConstraints.REMAINDER;
         valueGBC.fill = GridBagConstraints.HORIZONTAL;
+        valueGBC.fill = GridBagConstraints.BOTH;
 
         JScrollPane captionScrollPane = new JScrollPane(_captionTextArea);
         _captionTextArea.setWrapStyleWord(true);
@@ -80,13 +82,15 @@ public class PhotoInfoPanel extends AbstractPanel
         mutablePanel.add(_privateCheckBox, valueGBC);
 
         _categoryList.setToolTipText("Drag and drop categories from the tree to add, select and hit Delete to remove");
-        _categoryList.setFont(new Font("Arial", Font.PLAIN, 10));
+//        _categoryList.setFont(new Font("Arial", Font.PLAIN, 10));
         JScrollPane categoryListScrollPane = new JScrollPane(_categoryList);
         JLabel categoryListLabel = new JLabel("Categories: ");
         categoryListLabel.setDisplayedMnemonic('g');
         categoryListLabel.setLabelFor(_categoryList);
         mutablePanel.add(categoryListLabel, labelGBC);
+        valueGBC.weighty = 2.0;
         mutablePanel.add(categoryListScrollPane, valueGBC);
+        valueGBC.weighty = 1.0;
 
 
         JLabel photographerLabel = new JLabel("Photographer:");
@@ -154,7 +158,7 @@ public class PhotoInfoPanel extends AbstractPanel
                             try
                             {
                                 photo.ensureAllResized();
-                                final Icon thumbnail = createIcon(photo.getDefaultDimensions());
+                                final Icon thumbnail = createIcon(photo.getRetinaDimensions());
 
                                 Runnable swingRunnable = new Runnable()
                                 {

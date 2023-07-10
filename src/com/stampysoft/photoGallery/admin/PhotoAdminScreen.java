@@ -76,7 +76,11 @@ public class PhotoAdminScreen extends AbstractPanel
         categoryTabbedPane.addTab("Recent Categories", recentCategoryListScrollPane);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        splitPane.setTopComponent(new JScrollPane(_photoList));
+        JScrollPane photoListScrollPane = new JScrollPane(_photoList);
+
+        photoListScrollPane.setMinimumSize(new Dimension(200, 600));
+
+        splitPane.setTopComponent(photoListScrollPane);
         splitPane.setBottomComponent(categoryTabbedPane);
         add(splitPane, BorderLayout.WEST);
 

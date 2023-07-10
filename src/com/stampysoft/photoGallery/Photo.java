@@ -13,6 +13,7 @@ import com.drew.metadata.Metadata;
 import com.drew.metadata.MetadataException;
 import com.drew.metadata.Tag;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.stampysoft.photoGallery.common.BasePhoto;
 import com.stampysoft.photoGallery.common.Resolution;
 
@@ -77,6 +78,11 @@ public class Photo extends BasePhoto implements Comparable<Photo>
             }
         }
         return result;
+    }
+
+    @JsonProperty
+    public List<Resolution> getResolutions() {
+        return Arrays.asList(getResizedDimensions());
     }
 
     public Set<Comment> getComments()

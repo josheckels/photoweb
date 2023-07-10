@@ -2,24 +2,19 @@
 <%@ page import="java.util.List" %>
 <p>&nbsp;</p>
 
-<p align="center">
-    <font size="-2">
-        <% if (request.getAttribute("Photographer") != null)
-        { %>
-        <%= ((com.stampysoft.photoGallery.Photographer) request.getAttribute("Photographer")).getCopyright() %>
-        <% } %>
-    </font>
+<p style="text-align: center; font-size: small">
+    <% if (request.getAttribute("Photographer") != null)
+    { %>
+    <%= ((com.stampysoft.photoGallery.Photographer) request.getAttribute("Photographer")).getCopyright() %>
+    <% } %>
 </p>
 
-<script type="text/javascript">
-    var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
-    document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
-</script>
-<script type="text/javascript">
-try
-{
-    var pageTracker = _gat._getTracker("UA-82411-1");
-    pageTracker._trackPageview();
-}
-catch(err) {}
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-7NSX5M7D0E"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-7NSX5M7D0E');
 </script>

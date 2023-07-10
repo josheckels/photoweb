@@ -7,6 +7,7 @@
 package com.stampysoft.photoGallery;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.stampysoft.photoGallery.common.BaseCategory;
 
@@ -67,6 +68,7 @@ public class Category extends BaseCategory implements Comparable<Category>
         _photos = photos;
     }
 
+    @JsonProperty
     public Set<Photo> getPhotos()
     {
         return getPhotos(true);
