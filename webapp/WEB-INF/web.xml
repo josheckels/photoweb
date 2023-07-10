@@ -5,17 +5,6 @@
 
 <web-app>
 
-    <filter>
-        <filter-name>Ad Filter</filter-name>
-        <filter-class>com.stampysoft.servlet.AdFilter</filter-class>
-    </filter>
-
-    <filter-mapping>
-        <filter-name>Ad Filter</filter-name>
-        <url-pattern>/*</url-pattern>
-    </filter-mapping>
-
-
     <servlet>
         <servlet-name>categoryBrowser</servlet-name>
         <servlet-class>com.stampysoft.photoGallery.servlet.CategoryBrowser</servlet-class>

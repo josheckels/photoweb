@@ -84,28 +84,6 @@
     </script>
 </head>
 <body>
-<% if (Boolean.TRUE.equals(request.getSession(true).getAttribute("ShowAds")))
-{ %>
-<div align="center">
-    <script type="text/javascript"><!--
-    google_ad_client = "pub-0439692010885772";
-    google_ad_width = 468;
-    google_ad_height = 60;
-    google_ad_format = "468x60_as";
-    google_ad_type = "text";
-    google_ad_channel = "";
-    google_color_border = "CCCCCC";
-    google_color_bg = "FFFFFF";
-    google_color_link = "000000";
-    google_color_url = "666666";
-    google_color_text = "333333";
-    //--></script>
-    <script type="text/javascript"
-            src="http://pagead2.googlesyndication.com/pagead/show_ads.js">
-    </script>
-    <br/>
-</div>
-<% } %>
 <table align="center" cellpadding="5" cellspacing="0" border="0">
     <tr><td align="center" colspan="5"><font size="-1" color="red"><c:out value="${UserCommentError}" /></font></td></tr>
     <tr>
