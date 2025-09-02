@@ -166,6 +166,7 @@ public class Photo implements Comparable<Photo>
         if (getPhotographer() != null)
         {
             result.put("photographer", getPhotographer().getName());
+            result.put("license", getPhotographer().getCopyright());
         }
         result.put("iso", getIso());
         result.put("cameraModel", getCameraModel());
