@@ -222,53 +222,8 @@
                             <c:if test="${photo.movie}">| <a href="<c:out value="${photo.movieURI}"/>">Movie</a></c:if>
                         </font>
                     </td>
-                </tr><%
-                Set<Comment> comments = (Set<Comment>)request.getAttribute("Comments");
-                if (comments.isEmpty())
-                { %>
-                <tr>
-                    <td><font size="-1" colspan="2"><i>No comments on this photo</i></font></td>
-                </tr><%
-                } %>
-                <c:forEach var="comment" items="${Comments}">
-                    <tr>
-                        <td valign="top"><font size="-1"><c:out value="${comment.name}" /> on <fmt:formatDate value="${comment.createdOn}" />:&nbsp;</font></td>
-                        <td><font size="-1"><c:out value="${comment.comment}" /></font></td>
-                    </tr>
-                </c:forEach>
+                </tr>
             </table>
-
-            <form method="post">
-                <input type="hidden" name="requestedAction" value="submitComment" />
-                <table align="center">
-                    <tr>
-                        <td align="center" colspan="2"><font size="-1" color="red"><c:out value="${UserCommentError}" /></font></td>
-                    </tr>
-                    <tr>
-                        <td align="right"><font size="-1">Your name:</font></td>
-                        <td><input type="text" onfocus="disableKeyboardShortcuts()" onblur="enableKeyboardShortcuts()" name="name" size="30" value="<c:out value="${UserComment.name}" />" /></td>
-                    </tr>
-                    <tr>
-                        <td align="right"><font size="-1">Your email address:</font></td>
-                        <td><input type="text" onfocus="disableKeyboardShortcuts()" onblur="enableKeyboardShortcuts()" name="email" size="30" value="<c:out value="${UserComment.email}" />" /></td>
-                    </tr>
-                    <tr>
-                        <td valign="top" align="right"><font size="-1">Comment:</font></td>
-                        <td><textarea cols="26" onfocus="disableKeyboardShortcuts()" onblur="enableKeyboardShortcuts()" name="comment" rows="3"><c:out value="${UserComment.comment}" /></textarea></td>
-                    </tr>
-                    <tr>
-                        <td />
-                        <td id="captchaImage" />
-                    </tr>
-                    <tr>
-                        <td align="right" id="captchaTextLabel" />
-                        <td id="captchaTextField" />
-                    </tr>
-                    <tr>
-                        <td/><td><input type="submit" value="Submit Comment" /></td>
-                    </tr>
-                </table>
-            </form>
         </td>
     </tr>
 </table>

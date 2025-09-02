@@ -1,7 +1,5 @@
 <%@ page import="com.stampysoft.photoGallery.servlet.PreviewImage" %>
 <%@ page import="java.util.List" %>
-<%@ page import="com.stampysoft.photoGallery.Comment" %>
-<%@ page import="java.util.Set" %>
 <%@ page import="com.stampysoft.photoGallery.common.Resolution" %>
 <%@page contentType="text/html" %>
 <%@ taglib uri="/c" prefix="c" %>
