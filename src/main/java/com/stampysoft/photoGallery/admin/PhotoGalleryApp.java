@@ -14,10 +14,10 @@ public class PhotoGalleryApp {
         // Start the Spring Application Context
         ConfigurableApplicationContext context = SpringApplication.run(PhotoGalleryApp.class, args);
 
-        // Get AdminFrame Bean from the Spring Context
-        SwingUtilities.invokeLater(() -> {
-            AdminFrame adminFrame = context.getBean(AdminFrame.class);
-        });
+//         Get AdminFrame Bean from the Spring Context
+//        SwingUtilities.invokeLater(() -> {
+//            AdminFrame adminFrame = context.getBean(AdminFrame.class);
+//        });
 
     }
 }
