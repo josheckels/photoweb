@@ -11,6 +11,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.List;
+import java.util.Objects;
 
 public class PhotographerPanel extends AbstractPanel
 {
@@ -101,33 +102,20 @@ public class PhotographerPanel extends AbstractPanel
         _photographersComboBox.setEnabled(true);
         _newButton.setEnabled(true);
 
-        Photographer photographer = newPhotos[0].getPhotographer();
-        if (photographer != null)
-        {
-            photographer = PhotoOperations.getPhotoOperations().merge(photographer);
-        }
+        Integer photographerId = AdminFrame.getFrame().getPhotoOperations().getPhotographerIdOfPhoto(newPhotos[0]);
 
+        boolean various = false;
         for (Photo photo : newPhotos)
         {
-            if (photographer != null)
+            Integer pid = AdminFrame.getFrame().getPhotoOperations().getPhotographerIdOfPhoto(photo);
+            if (!Objects.equals(photographerId, pid))
             {
-                if (!photographer.equals(photo.getPhotographer()))
-                {
-                    photographer = Photographer.VARIOUS_PHOTOGRAPHER;
-                    break;
-                }
-            }
-            else
-            {
-                if (photo.getPhotographer() != null)
-                {
-                    photographer = Photographer.VARIOUS_PHOTOGRAPHER;
-                    break;
-                }
+                various = true;
+                break;
             }
         }
 
-        if (photographer == Photographer.VARIOUS_PHOTOGRAPHER)
+        if (various)
         {
             _photographersComboBox.insertItemAt(Photographer.VARIOUS_PHOTOGRAPHER, 0);
             _photographersComboBox.setSelectedIndex(0);
@@ -136,7 +124,7 @@ public class PhotographerPanel extends AbstractPanel
             _newButton.setEnabled(false);
             _mixed = true;
         }
-        else if (photographer == null)
+        else if (photographerId == null)
         {
             _photographersComboBox.setSelectedItem(Photographer.UNKNOWN_PHOTOGRAPHER);
             _editButton.setEnabled(false);
@@ -149,7 +137,7 @@ public class PhotographerPanel extends AbstractPanel
             for (int i = 1; i < _model.getSize(); i++)
             {
                 Photographer photographer2 = (Photographer) _model.getElementAt(i);
-                if (photographer2 != null && photographer.equals(photographer2))
+                if (photographer2 != null && Objects.equals(photographer2.getPhotographerId(), photographerId))
                 {
                     _photographersComboBox.setSelectedIndex(i);
                     break;

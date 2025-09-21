@@ -102,7 +102,7 @@ public class PhotoOperations
         }
         List<Category> newestCategories = (List<Category>) query.getResultList();
 
-        List<Category> result = new ArrayList<Category>();
+        List<Category> result = new ArrayList<>();
         long cutoffMillis = System.currentTimeMillis() - 1000 * 60 * 60 * 24 * 14;
         for (Category c : newestCategories)
         {
@@ -139,31 +139,23 @@ public class PhotoOperations
     public Photo savePhoto(Photo photo)
     {
         photo = getEntityManager().merge(photo);
-        commit();
-        beginTransaction();
         return photo;
     }
 
     public Category saveCategory(Category category)
     {
         category = getEntityManager().merge(category);
-        commit();
-        beginTransaction();
         return category;
     }
 
     public void deleteCategory(Category category)
     {
         getEntityManager().remove(category);
-        commit();
-        beginTransaction();
     }
 
     public void deletePhoto(Photo photo)
     {
         getEntityManager().remove(photo);
-        commit();
-        beginTransaction();
     }
 
     public List<Photo> getAllPhotos()
@@ -181,15 +173,11 @@ public class PhotoOperations
     public void savePhotographer(Photographer photographer)
     {
         getEntityManager().merge(photographer);
-        commit();
-        beginTransaction();
     }
 
     public void deletePhotographer(Photographer photographer)
     {
         getEntityManager().remove(photographer);
-        commit();
-        beginTransaction();
     }
 
     public Photographer getPhotographerById(Long photographerId)
@@ -223,11 +211,11 @@ public class PhotoOperations
     }
 
     public void beginTransaction() {
-        getEntityManager().getTransaction().begin();
+        // No-op: transactions are managed by Spring's @Transactional
     }
 
     public void commit() {
-        getEntityManager().getTransaction().commit();
+        // No-op: transactions are managed by Spring's @Transactional
     }
 
     private EntityManager getEntityManager() {
@@ -236,11 +224,55 @@ public class PhotoOperations
 
     public List<Category> getAllCategories(boolean includePrivate, boolean sortByDate)
     {
-        Query query = getEntityManager().createQuery("from Category " + (includePrivate ? "" : " where private = :includePrivate ") + "order by " + (sortByDate ? " categoryId" : " description"));
+        Query query = getEntityManager().createQuery("from Category " + (includePrivate ? "" : " where _private = :includePrivate ") + "order by " + (sortByDate ? " categoryId" : " description"));
         if (!includePrivate)
         {
             query.setParameter("includePrivate", includePrivate);
         }
         return (List<Category>) query.getResultList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Category> getInitializedChildCategories(Category category) {
+        Category managed = merge(category);
+        // Ensure the collection is initialized inside the transactional context
+        managed.getChildCategories().size();
+        return new ArrayList<>(managed.getChildCategories());
+    }
+
+    @Transactional(readOnly = true)
+    public boolean photoHasAnyCategory(Photo photo) {
+        Photo managed = merge(photo);
+        // Initialize categories and check emptiness inside transaction
+        return !managed.getCategories(true).isEmpty();
+    }
+
+    @Transactional(readOnly = true)
+    public Integer getPhotographerIdOfPhoto(Photo photo) {
+        Photo managed = merge(photo);
+        Photographer p = managed.getPhotographer();
+        return p == null ? null : p.getPhotographerId();
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Set<Category> getInitializedCategories(Photo photo, boolean includePrivate) {
+        Photo managed = merge(photo);
+        // Initialize categories inside transaction
+        managed.getCategories(includePrivate).size();
+        return new java.util.LinkedHashSet<>(managed.getCategories(includePrivate));
+    }
+
+    @Transactional
+    public void addCategoryToPhoto(Photo photo, Category category) {
+        Photo managedPhoto = merge(photo);
+        Category managedCategory = merge(category);
+        managedPhoto.getCategories(true).add(managedCategory);
+    }
+
+    @Transactional
+    public void removeCategoryFromPhoto(Photo photo, Category category) {
+        Photo managedPhoto = merge(photo);
+        Category managedCategory = merge(category);
+        managedPhoto.getCategories(true).remove(managedCategory);
     }
 }

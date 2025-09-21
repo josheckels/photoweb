@@ -7,8 +7,6 @@
 package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.Photo;
-import com.stampysoft.photoGallery.PhotoOperations;
-import org.hibernate.LockMode;
 
 import javax.swing.*;
 import java.awt.*;
@@ -38,8 +36,8 @@ public class PhotoListCellRenderer extends DefaultListCellRenderer
         {
             label.setFont(label.getFont().deriveFont(Font.PLAIN));
         }
-        photo = AdminFrame.getFrame().getPhotoOperations().merge(photo);
-        if (photo.getCategories(true).isEmpty())
+        boolean hasCategory = AdminFrame.getFrame().getPhotoOperations().photoHasAnyCategory(photo);
+        if (!hasCategory)
         {
             label.setForeground(Color.red);
         }

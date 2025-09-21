@@ -12,12 +12,11 @@ import java.util.Iterator;
 /**
  * @author josh
  */
-public class IteratorBackedEnumeration implements Enumeration
+public class IteratorBackedEnumeration<T> implements Enumeration<T>
 {
+    private final Iterator<T> _iterator;
 
-    private Iterator _iterator;
-
-    public IteratorBackedEnumeration(Iterator iterator)
+    public IteratorBackedEnumeration(Iterator<T> iterator)
     {
         _iterator = iterator;
     }
@@ -27,9 +26,8 @@ public class IteratorBackedEnumeration implements Enumeration
         return _iterator.hasNext();
     }
 
-    public Object nextElement()
+    public T nextElement()
     {
         return _iterator.next();
     }
-
 }

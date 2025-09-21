@@ -53,8 +53,10 @@ public class Photo implements Comparable<Photo>
     protected static final Comparator<Resolution> DIMENSION_COMPARATOR = Comparator.comparingInt(r -> (r.height * r.width));
     protected static final Comparator<Resolution> REVERSE_DIMENSION_COMPARATOR = (o1, o2) -> -1 * DIMENSION_COMPARATOR.compare(o1, o2);
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY) @Column(name = "photo_id")
-    protected Integer photoId = Integer.MIN_VALUE;
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "photo_photo_id_seq_gen")
+    @SequenceGenerator(name = "photo_photo_id_seq_gen", sequenceName = "photo_photo_id_seq", allocationSize = 1)
+    @Column(name = "photo_id")
+    protected Integer photoId = null;
     @Column
     protected String filename;
     @Column
@@ -536,6 +538,111 @@ public class Photo implements Comparable<Photo>
     public Resolution getOriginalDimensions()
     {
         return new Resolution(getWidth(), getHeight(), this);
+    }
+
+    /**
+     * Populate EXIF-derived metadata fields (iso, exposureTime, focalLength, cameraModel, aperture, lensModel)
+     * by reading the underlying JPEG file. Safe to call multiple times; only fills fields that are currently null.
+     */
+    public void populateMetadataFromFile() throws PhotoManipulationException
+    {
+        Iterator<Directory> directories = getMetadataDirectories();
+        while (directories.hasNext())
+        {
+            Directory directory = directories.next();
+            for (Tag tag : directory.getTags())
+            {
+                String name = tag.getTagName();
+                String desc = tag.getDescription();
+                if (desc == null)
+                {
+                    continue;
+                }
+
+
+
+                try
+                {
+                    if (_iso == null && ("ISO Speed Ratings".equals(name) || "ISO Speed".equals(name)))
+                    {
+                        Integer iso = parseInteger(desc);
+                        if (iso != null) setIso(iso);
+                    }
+                    else if (_exposureTime == null && ("Exposure Time".equals(name) || "Shutter Speed Value".equals(name)))
+                    {
+                        Float sec = parseExposureSeconds(desc);
+                        if (sec != null) setExposureTime(sec);
+                    }
+                    else if (_focalLength == null && ("Focal Length".equals(name)))
+                    {
+                        Float fl = parseFocalLength(desc);
+                        setFocalLength(fl);
+                    }
+                    else if (_cameraModel == null && ("Model".equals(name) || "Camera Model Name".equals(name)))
+                    {
+                        setCameraModel(desc);
+                    }
+                    else if (_aperture == null && ("F-Number".equals(name) || "Aperture Value".equals(name)))
+                    {
+                        Float ap = parseAperture(desc);
+                        setAperture(ap);
+                    }
+                    else if (_lensModel == null && ("Lens Model".equals(name) || "Lens".equals(name)))
+                    {
+                        setLensModel(desc);
+                    }
+                }
+                catch (Exception ignore)
+                {
+                    // Be lenient: ignore parsing errors
+                }
+            }
+        }
+    }
+
+    private static Integer parseInteger(String s)
+    {
+        try
+        {
+            String digits = s.replaceAll("[^0-9]", "").trim();
+            if (digits.isEmpty()) return null;
+            return Integer.valueOf(digits);
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
+    }
+
+    private static Float parseFocalLength(String focal)
+    {
+        focal = focal.replace("mm", "").trim();
+        return Float.parseFloat(focal);
+    }
+
+    private static Float parseAperture(String fStop)
+    {
+        fStop = fStop.replace("f/", "").trim();
+        fStop = fStop.replace("F", "").trim();
+        return Float.parseFloat(fStop);
+    }
+
+    private static Float parseExposureSeconds(String expTime)
+    {
+        Float result = null;
+        if (expTime.contains("/")) {
+            String[] parts = expTime.split("/");
+            if (parts.length == 2) {
+                float numerator = Float.parseFloat(parts[0].trim());
+                float denominator = Float.parseFloat(parts[1].trim().split(" ")[0]);
+                result = numerator / denominator;
+            }
+        } else {
+            // Try to parse it directly if it's not in fraction format
+            expTime = expTime.replace(" sec", "").trim();
+            result = Float.parseFloat(expTime);
+        }
+        return result;
     }
 
     private Resolution getDimensionForMaxSize(int pixels)

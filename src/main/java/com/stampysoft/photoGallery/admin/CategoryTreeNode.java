@@ -8,14 +8,8 @@ package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.Category;
 import com.stampysoft.photoGallery.CategoryNotFoundException;
-import com.stampysoft.photoGallery.PhotoOperations;
 import com.stampysoft.util.IteratorBackedEnumeration;
 import com.stampysoft.util.SystemException;
-import org.hibernate.Hibernate;
-import org.hibernate.LockMode;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 import javax.swing.tree.MutableTreeNode;
 import javax.swing.tree.TreeNode;
@@ -31,7 +25,7 @@ import java.util.List;
 public class CategoryTreeNode implements MutableTreeNode
 {
 
-    private CategoryTreeNode _parent;
+    private final CategoryTreeNode _parent;
     private Category _category;
     private List<CategoryTreeNode> _children;
 
@@ -41,7 +35,6 @@ public class CategoryTreeNode implements MutableTreeNode
         _category = category;
     }
 
-    @Transactional(readOnly = true)
     protected synchronized List<CategoryTreeNode> loadChildren()
     {
         if (_children == null)
@@ -53,14 +46,14 @@ public class CategoryTreeNode implements MutableTreeNode
             }
             else
             {
-                _category = AdminFrame.getFrame().getPhotoOperations().merge(_category);
-                Hibernate.initialize(_category.getChildCategories());
-                categories = _category.getChildCategories();
+                categories = AdminFrame.getFrame().getPhotoOperations().getInitializedChildCategories(_category);
             }
             _children = new ArrayList<>();
             if (categories != null)
             {
-                for (Category category : categories)
+                java.util.List<Category> sorted = new java.util.ArrayList<>(categories);
+                sorted.sort(java.util.Comparator.comparing(Category::getDescription, String.CASE_INSENSITIVE_ORDER));
+                for (Category category : sorted)
                 {
                     _children.add(new CategoryTreeNode(this, category));
                 }
@@ -69,7 +62,7 @@ public class CategoryTreeNode implements MutableTreeNode
         return _children;
     }
 
-    public Enumeration children()
+    public Enumeration<CategoryTreeNode> children()
     {
         loadChildren();
         return new IteratorBackedEnumeration(_children.iterator());
@@ -82,7 +75,7 @@ public class CategoryTreeNode implements MutableTreeNode
 
     public TreeNode getChildAt(int index)
     {
-        return (TreeNode) loadChildren().get(index);
+        return loadChildren().get(index);
     }
 
     public int getChildCount()
@@ -152,11 +145,7 @@ public class CategoryTreeNode implements MutableTreeNode
         {
             AdminModel.getModel().deleteCategory(_category);
         }
-        catch (SystemException e)
-        {
-            e.printStackTrace();
-        }
-        catch (CategoryNotFoundException e)
+        catch (SystemException | CategoryNotFoundException e)
         {
             e.printStackTrace();
         }

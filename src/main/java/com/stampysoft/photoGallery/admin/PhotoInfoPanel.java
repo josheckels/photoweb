@@ -17,7 +17,6 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.util.Iterator;
 import java.util.TreeSet;
 
 /**
@@ -26,16 +25,16 @@ import java.util.TreeSet;
 public class PhotoInfoPanel extends AbstractPanel
 {
 
-    private JLabel _photoLabel = new JLabel();
-    private JTextArea _captionTextArea = new JTextArea(2, 80);
-    private JCheckBox _privateCheckBox = new JCheckBox("Private");
-    private CategoryListModel _categoryListModel = new CategoryListModel();
-    private JList _categoryList = new JList(_categoryListModel);
-    private JButton _saveButton = new JButton("Save");
-    private JButton _deleteButton = new JButton("Delete");
-    private JButton _scanForNewPhotosButton = new JButton("Scan for new photos");
-    private JButton _renameButton = new JButton("Rename files");
-    private PhotographerPanel _photographerPanel = new PhotographerPanel();
+    private final JLabel _photoLabel = new JLabel();
+    private final JTextArea _captionTextArea = new JTextArea(2, 80);
+    private final JCheckBox _privateCheckBox = new JCheckBox("Private");
+    private final CategoryListModel _categoryListModel = new CategoryListModel();
+    private final JList _categoryList = new JList(_categoryListModel);
+    private final JButton _saveButton = new JButton("Save");
+    private final JButton _deleteButton = new JButton("Delete");
+    private final JButton _scanForNewPhotosButton = new JButton("Scan for new photos");
+    private final JButton _renameButton = new JButton("Rename files");
+    private final PhotographerPanel _photographerPanel = new PhotographerPanel();
 
     private TreeSet<Category> _originalCategories = null;
 
@@ -151,37 +150,22 @@ public class PhotoInfoPanel extends AbstractPanel
                     AdminFrame.getFrame().setTitle("Photo Gallery: " + photo.getFilename() + " - " + photo.getWidth() + "x" + photo.getHeight());
                     _captionTextArea.setText(photo.getCaption());
                     _privateCheckBox.setSelected(photo.isPrivate());
-                    _categoryListModel.setCategories(photo.getCategories(true));
+                    _categoryListModel.setCategories(new java.util.TreeSet<>(AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(photo, true)));
 
-                    Runnable r = new Runnable()
-                    {
-                        public void run()
+                    Runnable r = () -> {
+                        try
                         {
-                            try
-                            {
-                                photo.ensureAllResized();
+                            photo.ensureAllResized();
 
-                                final Icon thumbnail = createIcon(photo.getRetinaDimensions());
+                            final Icon thumbnail = createIcon(photo.getRetinaDimensions());
 
-                                Runnable swingRunnable = new Runnable()
-                                {
-                                    public void run()
-                                    {
-                                        _photoLabel.setIcon(thumbnail);
-                                    }
-                                };
-                                SwingUtilities.invokeLater(swingRunnable);
-                            }
-                            catch (IOException e)
-                            {
-                                handleException(e);
-                                _photoLabel.setIcon(null);
-                            }
-                            catch (PhotoManipulationException e)
-                            {
-                                handleException(e);
-                                _photoLabel.setIcon(null);
-                            }
+                            Runnable swingRunnable = () -> _photoLabel.setIcon(thumbnail);
+                            SwingUtilities.invokeLater(swingRunnable);
+                        }
+                        catch (IOException | PhotoManipulationException e)
+                        {
+                            handleException(e);
+                            _photoLabel.setIcon(null);
                         }
                     };
                     new Thread(r).start();
@@ -191,18 +175,12 @@ public class PhotoInfoPanel extends AbstractPanel
                     if (newPhotos.length > 1)
                     {
                         AdminFrame.getFrame().setTitle("Photo Gallery: " + newPhotos.length + " photos selected");
-                        TreeSet<Category> commonCategories = new TreeSet<>();
-                        commonCategories.addAll(newPhotos[0].getCategories(true));
+                        java.util.Set<Category> firstCats = AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(newPhotos[0], true);
+                        TreeSet<Category> commonCategories = new TreeSet<>(firstCats);
                         for (int i = 1; i < newPhotos.length; i++)
                         {
-                            for (Iterator<Category> common = commonCategories.iterator(); common.hasNext();)
-                            {
-                                Category category = common.next();
-                                if (!newPhotos[i].getCategories(true).contains(category))
-                                {
-                                    common.remove();
-                                }
-                            }
+                            java.util.Set<Category> cats = AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(newPhotos[i], true);
+                            commonCategories.removeIf(category -> !cats.contains(category));
                         }
                         _categoryListModel.setCategories(commonCategories);
                         _originalCategories = new TreeSet<>(commonCategories);
@@ -210,7 +188,7 @@ public class PhotoInfoPanel extends AbstractPanel
                     else
                     {
                         AdminFrame.getFrame().setTitle("Photo Gallery");
-                        _categoryListModel.setCategories(new TreeSet<Category>());
+                        _categoryListModel.setCategories(new TreeSet<>());
                     }
                     _photoLabel.setIcon(null);
                     _captionTextArea.setText("");
@@ -233,13 +211,7 @@ public class PhotoInfoPanel extends AbstractPanel
             }
         });
 
-        _saveButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
-            {
-                saveCurrentPhoto();
-            }
-        });
+        _saveButton.addActionListener(e -> saveCurrentPhoto());
 
         KeyListener nextPhotoListener = new NextPreviousKeyListener(this);
 
@@ -259,42 +231,26 @@ public class PhotoInfoPanel extends AbstractPanel
             }
         });
 
-        _deleteButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
+        _deleteButton.addActionListener(e -> {
+            AdminModel.getModel().deleteCurrentPhotos();
+            AdminModel.getModel().firePhotoListChanged();
+        });
+
+        _scanForNewPhotosButton.addActionListener(e -> {
+            try
             {
-                AdminModel.getModel().deleteCurrentPhotos();
-                AdminModel.getModel().firePhotoListChanged();
+                AdminModel.getModel().scanForNewPhotos();
+            }
+            catch (SystemException | PhotoManipulationException ex)
+            {
+                handleException(ex);
             }
         });
 
-        _scanForNewPhotosButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
-            {
-                try
-                {
-                    AdminModel.getModel().scanForNewPhotos();
-                }
-                catch (SystemException ex)
-                {
-                    handleException(ex);
-                }
-                catch (PhotoManipulationException ex)
-                {
-                    handleException(ex);
-                }
-            }
-        });
-
-        _renameButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
-            {
-                JFrame parent = AdminFrame.getFrame();
-                ImageRenamer renamer = new ImageRenamer(parent);
-                renamer.setVisible(true);
-            }
+        _renameButton.addActionListener(e -> {
+            JFrame parent = AdminFrame.getFrame();
+            ImageRenamer renamer = new ImageRenamer(parent);
+            renamer.setVisible(true);
         });
     }
 
@@ -337,36 +293,30 @@ public class PhotoInfoPanel extends AbstractPanel
                     {
                         for (Photo photo : photos)
                         {
-
-                            photo.getCategories(true).add(category);
+                            AdminFrame.getFrame().getPhotoOperations().addCategoryToPhoto(photo, category);
                         }
                     }
                 }
 
-                for (Object _originalCategory : _originalCategories)
+                for (Category category : _originalCategories)
                 {
-                    Category category = (Category) _originalCategory;
                     if (!_categoryListModel.getCategories().contains(category))
                     {
                         for (Photo photo : photos)
                         {
-                            photo.getCategories(true).remove(category);
+                            AdminFrame.getFrame().getPhotoOperations().removeCategoryFromPhoto(photo, category);
                         }
                     }
                 }
 
-                _originalCategories = new TreeSet<Category>(_categoryListModel.getCategories());
+                _originalCategories = new TreeSet<>(_categoryListModel.getCategories());
             }
             for (Photo photo : photos)
             {
                 AdminModel.getModel().savePhoto(photo, _categoryListModel.isChanged());
             }
         }
-        catch (SystemException ex)
-        {
-            handleException(ex);
-        }
-        catch (PhotoNotFoundException ex)
+        catch (SystemException | PhotoNotFoundException ex)
         {
             handleException(ex);
         }

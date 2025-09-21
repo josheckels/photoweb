@@ -171,18 +171,20 @@ public class PhotoAdderThread extends Thread
         File aviFile = new File(ResolutionUtil.getPhotosDirectory(), photoToSave.getMovieFilename());
         photoToSave.setMovie(aviFile.exists());
         setPhotoSize(photoToSave, photoFile);
-        photoToSave.setCategories(new TreeSet<Category>());
+        photoToSave.setCategories(new TreeSet<>());
 
-        final Photo[] returnValue = new Photo[1];
-
-        SwingUtilities.invokeAndWait(new Runnable()
+        // Populate EXIF metadata (ISO, exposure, etc.) for new photos before saving
+        try
         {
-            public void run()
-            {
-                returnValue[0] = AdminFrame.getFrame().getPhotoOperations().savePhoto(photoToSave);
-            }
-        });
-        return returnValue[0];
+            photoToSave.populateMetadataFromFile();
+        }
+        catch (PhotoManipulationException e)
+        {
+            // Non-fatal: proceed without metadata
+            System.err.println("Failed to read EXIF for " + photoToSave.getFilename() + ": " + e.getMessage());
+        }
+
+        return AdminFrame.getFrame().getPhotoOperations().savePhoto(photoToSave);
     }
 
     private void setPhotoSize(Photo photo, File f) throws PhotoManipulationException

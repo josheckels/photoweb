@@ -33,6 +33,11 @@ public class PhotoAdminScreen extends AbstractPanel
     private PhotoInfoPanel _infoPanel = new PhotoInfoPanel();
     private JTabbedPane _categoryTabbedPane;
 
+    // Type-to-search state for the photo list
+    private final StringBuilder _photoListTypeBuffer = new StringBuilder();
+    private long _photoListLastTypeTime = 0L;
+    private static final int TYPE_AHEAD_RESET_MS = 1200;
+
     public PhotoAdminScreen()
     {
         addComponents();
@@ -101,6 +106,70 @@ public class PhotoAdminScreen extends AbstractPanel
                     Photo[] photos = new Photo[selected.length];
                     System.arraycopy(selected, 0, photos, 0, photos.length);
                     AdminModel.getModel().fireSelectedPhotosChanged(photos);
+                }
+            }
+        });
+
+        // Type-to-search: when user types, jump to the first photo whose filename starts with the typed text
+        _photoList.addKeyListener(new KeyAdapter()
+        {
+            public void keyTyped(KeyEvent e)
+            {
+                char ch = e.getKeyChar();
+                long now = System.currentTimeMillis();
+                if (now - _photoListLastTypeTime > TYPE_AHEAD_RESET_MS)
+                {
+                    _photoListTypeBuffer.setLength(0);
+                }
+                _photoListLastTypeTime = now;
+
+                if (ch == KeyEvent.VK_ESCAPE)
+                {
+                    _photoListTypeBuffer.setLength(0);
+                    return;
+                }
+                if (ch == KeyEvent.VK_BACK_SPACE)
+                {
+                    int len = _photoListTypeBuffer.length();
+                    if (len > 0)
+                    {
+                        _photoListTypeBuffer.deleteCharAt(len - 1);
+                    }
+                }
+                else if (!Character.isISOControl(ch))
+                {
+                    _photoListTypeBuffer.append(ch);
+                }
+
+                String prefix = _photoListTypeBuffer.toString().toLowerCase();
+                if (prefix.length() == 0)
+                {
+                    return;
+                }
+
+                ListModel model = _photoList.getModel();
+                int bestIndex = -1;
+                for (int i = 0; i < model.getSize(); i++)
+                {
+                    Object obj = model.getElementAt(i);
+                    if (obj instanceof Photo)
+                    {
+                        String name = ((Photo) obj).getFilename();
+                        if (name != null && name.toLowerCase().startsWith(prefix))
+                        {
+                            bestIndex = i;
+                            break;
+                        }
+                    }
+                }
+                if (bestIndex >= 0)
+                {
+                    _photoList.setSelectedIndex(bestIndex);
+                    Rectangle bounds = _photoList.getCellBounds(bestIndex, bestIndex);
+                    if (bounds != null)
+                    {
+                        _photoList.scrollRectToVisible(bounds);
+                    }
                 }
             }
         });
