@@ -6,12 +6,15 @@ import com.stampysoft.photoGallery.common.Resolution;
 import javax.swing.*;
 import java.io.File;
 import java.io.IOException;
-import java.io.FilenameFilter;
 import java.util.*;
 import java.util.List;
 import java.net.URISyntaxException;
 import java.awt.*;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import com.stampysoft.photoGallery.storage.S3Uploader;
+import com.stampysoft.util.Configuration;
 
 /**
  * User: Josh
@@ -47,17 +50,11 @@ public class PhotoAdderThread extends Thread
             cal.add(Calendar.DATE, -7);
             long newerThanDate = cal.getTime().getTime();
 
-            Set<Photo> photosToResize = new HashSet<Photo>();
+            Set<Photo> photosToResize = new HashSet<>();
 
-            Map<String, Photo> photos = new HashMap<String, Photo>();
-            final List<Photo> photoList = new ArrayList<Photo>();
-            SwingUtilities.invokeAndWait(new Runnable()
-            {
-                public void run()
-                {
-                    photoList.addAll(AdminFrame.getFrame().getPhotoOperations().getAllPhotos());
-                }
-            });
+            Map<String, Photo> photos = new HashMap<>();
+            final List<Photo> photoList = new ArrayList<>();
+            SwingUtilities.invokeAndWait((Runnable) () -> photoList.addAll(AdminFrame.getFrame().getPhotoOperations().getAllPhotos()));
             for (Photo photo : photoList)
             {
                 photos.put(photo.getFilename(), photo);
@@ -70,6 +67,13 @@ public class PhotoAdderThread extends Thread
 
                 try
                 {
+                    // If the photo already exists in the destination originals directory,
+                    // consider it processed and skip any further work.
+                    File destFile = new File(ResolutionUtil.getPhotosDirectory(), photoFile.getName());
+                    if (destFile.exists()) {
+                        continue;
+                    }
+
                     Photo photo = photos.get(photoFile.getName());
                     if (photo == null)
                     {
@@ -99,17 +103,7 @@ public class PhotoAdderThread extends Thread
                     photoToResize.ensureAllResized();
                     SwingUtilities.invokeLater(new CountSetter(++i, _progressBar));
                 }
-                catch (IOException e)
-                {
-                    System.err.println("Failed to resize " + photoToResize.getFilename());
-                    e.printStackTrace();
-                }
-                catch (PhotoManipulationException e)
-                {
-                    System.err.println("Failed to resize " + photoToResize.getFilename());
-                    e.printStackTrace();
-                }
-                catch (RuntimeException e)
+                catch (IOException | PhotoManipulationException | RuntimeException e)
                 {
                     System.err.println("Failed to resize " + photoToResize.getFilename());
                     e.printStackTrace();
@@ -118,23 +112,9 @@ public class PhotoAdderThread extends Thread
             }
             _photosAdded = photosToResize.size();
 
-            SwingUtilities.invokeLater(new Runnable()
-            {
-                public void run()
-                {
-                    _dialog.dispose();
-                }
-            });
+            SwingUtilities.invokeLater(() -> _dialog.dispose());
         }
-        catch (InvocationTargetException e)
-        {
-            e.printStackTrace();
-        }
-        catch (URISyntaxException e)
-        {
-            e.printStackTrace();
-        }
-        catch (InterruptedException e)
+        catch (InvocationTargetException | URISyntaxException | InterruptedException e)
         {
             e.printStackTrace();
         }
@@ -152,13 +132,7 @@ public class PhotoAdderThread extends Thread
                 {
                     photosToResize.add(photo);
                     setPhotoSize(photo, photoFile);
-                    SwingUtilities.invokeAndWait(new Runnable()
-                    {
-                        public void run()
-                        {
-                            AdminFrame.getFrame().getPhotoOperations().savePhoto(photo);
-                        }
-                    });
+                    SwingUtilities.invokeAndWait((Runnable) () -> AdminFrame.getFrame().getPhotoOperations().savePhoto(photo));
                 }
             }
         }
@@ -166,6 +140,28 @@ public class PhotoAdderThread extends Thread
 
     private Photo addNewPhoto(File photoFile) throws URISyntaxException, PhotoManipulationException, InterruptedException, InvocationTargetException
     {
+        // Copy source image into destination originals directory before saving
+        try {
+            File destDir = ResolutionUtil.getPhotosDirectory();
+            if (!destDir.exists()) {
+                destDir.mkdirs();
+            }
+            File destFile = new File(destDir, photoFile.getName());
+            // Always replace to ensure latest export overwrites stale copy
+            Files.copy(photoFile.toPath(), destFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            // Preserve last modified time to help change detection
+            destFile.setLastModified(photoFile.lastModified());
+        } catch (IOException | URISyntaxException ioe) {
+            throw new PhotoManipulationException(ioe);
+        }
+        // Enqueue background upload of the original to S3
+        try {
+            File destFile = new File(ResolutionUtil.getPhotosDirectory(), photoFile.getName());
+            S3Uploader.getInstance().enqueueUploadOriginal(destFile, photoFile.getName());
+        } catch (URISyntaxException ignore) {
+            // ignore
+        }
+
         final Photo photoToSave = new Photo();
         photoToSave.setFilename(photoFile.getName());
         File aviFile = new File(ResolutionUtil.getPhotosDirectory(), photoToSave.getMovieFilename());
@@ -203,14 +199,9 @@ public class PhotoAdderThread extends Thread
 
     private File[] getPhotoFiles() throws URISyntaxException
     {
-        File dir = ResolutionUtil.getPhotosDirectory();
-        File[] results = dir.listFiles(new FilenameFilter()
-        {
-            public boolean accept(File dir, String name)
-            {
-                return name.toLowerCase().endsWith(".jpg");
-            }
-        });
+        // Scan the exported photos directory for new files
+        File dir = new File(Configuration.getConfiguration().getProperty("ExportedPhotosDirectory"));
+        File[] results = dir.listFiles((dir1, name) -> name.toLowerCase().endsWith(".jpg"));
         if (results == null)
         {
             results = new File[0];
@@ -218,7 +209,7 @@ public class PhotoAdderThread extends Thread
         return results;
     }
     
-    private class CountSetter implements Runnable
+    private static class CountSetter implements Runnable
     {
         private final JProgressBar _progressBar;
         private final int _count;
@@ -235,7 +226,7 @@ public class PhotoAdderThread extends Thread
         }
     }
 
-    private class CountTotalSetter implements Runnable
+    private static class CountTotalSetter implements Runnable
     {
         private final int _count;
         private final String _message;

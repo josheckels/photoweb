@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.stampysoft.photoGallery.admin.AdminFrame;
 import com.stampysoft.photoGallery.common.Resolution;
 import jakarta.persistence.*;
+import com.stampysoft.photoGallery.storage.S3Uploader;
 
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -301,6 +302,12 @@ public class Photo implements Comparable<Photo>
                     {
                         writer.setOutput(out);
                         writer.write(null, iioImage, param);
+                    }
+                    // Enqueue background upload of the resized image to S3
+                    try {
+                        S3Uploader.getInstance().enqueueUploadResized(file, newResolution.getFilename());
+                    } catch (Throwable ignore) {
+                        // Best-effort upload; ignore any runtime issues here
                     }
 
                     System.gc();
