@@ -18,9 +18,9 @@ import java.util.Properties;
 public class Configuration
 {
 
-    private Properties _properties = new Properties();
+    private final Properties _properties = new Properties();
 
-    private static String _configFileName = "/Volumes/Crucial X8/photoweb/src/config.properties";
+    private static String _configFileName = "./src/config.properties";
 
     private Configuration() throws ConfigurationException
     {
