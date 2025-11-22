@@ -17,16 +17,16 @@ import java.util.List;
 /**
  * @author josh
  */
-public class PhotoListModel extends AbstractListModel
+public class PhotoListModel extends AbstractListModel<Photo>
 {
 
-    private List<Photo> _photos = new ArrayList<Photo>();
+    private final List<Photo> _photos = new ArrayList<>();
 
     public PhotoListModel()
     {
         AdminModel.getModel().addPhotoListener(new PhotoListener()
         {
-            public void selectedPhotosChanged(Photo[] newPhotos, Photo[] oldPhotos)
+            public void selectedPhotosChanged(List<Photo> newPhotos, List<Photo> oldPhotos)
             {
                 for (Photo newPhoto : newPhotos)
                 {

@@ -1,20 +1,17 @@
 package com.stampysoft.photoGallery.admin;
 
-import com.stampysoft.photoGallery.PhotoOperations;
 import com.stampysoft.photoGallery.Photographer;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 
 public class PhotographerDialog extends JDialog
 {
 
-    private JTextField _nameTextField = new JTextField(10);
-    private JTextArea _copyrightTextArea = new JTextArea(5, 10);
+    private final JTextField _nameTextField = new JTextField(10);
+    private final JTextArea _copyrightTextArea = new JTextArea(5, 10);
 
-    private JButton _deleteButton;
+    private final JButton _deleteButton;
 
     private Photographer _photographer;
 
@@ -41,39 +38,25 @@ public class PhotographerDialog extends JDialog
         contentPanel.add(new JScrollPane(_copyrightTextArea), valueGBC);
 
         JButton cancelButton = new JButton("Cancel");
-        cancelButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
-            {
-                PhotographerDialog.this.setVisible(false);
-            }
-        });
+        cancelButton.addActionListener(e -> PhotographerDialog.this.setVisible(false));
 
         JButton okButton = new JButton("OK");
-        okButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
-            {
-                _photographer.setName(_nameTextField.getText());
-                _photographer.setCopyright(_copyrightTextArea.getText());
+        okButton.addActionListener(e -> {
+            _photographer.setName(_nameTextField.getText());
+            _photographer.setCopyright(_copyrightTextArea.getText());
 
-                AdminFrame.getFrame().getPhotoOperations().savePhotographer(_photographer);
-                AdminModel.getModel().firePhotographersChanged();
-                setVisible(false);
-            }
+            AdminFrame.getFrame().getPhotoOperations().savePhotographer(_photographer);
+            AdminModel.getModel().firePhotographersChanged();
+            setVisible(false);
         });
 
         _deleteButton = new JButton("Delete");
-        _deleteButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
+        _deleteButton.addActionListener(e -> {
+            if (JOptionPane.showConfirmDialog(_deleteButton, "Are you sure you want to delete that photographer?") == JOptionPane.YES_OPTION)
             {
-                if (JOptionPane.showConfirmDialog(_deleteButton, "Are you sure you want to delete that photographer?") == JOptionPane.YES_OPTION)
-                {
-                    AdminFrame.getFrame().getPhotoOperations().deletePhotographer(_photographer);
-                    AdminModel.getModel().firePhotographersChanged();
-                    setVisible(false);
-                }
+                AdminFrame.getFrame().getPhotoOperations().deletePhotographer(_photographer);
+                AdminModel.getModel().firePhotographersChanged();
+                setVisible(false);
             }
         });
 
@@ -102,8 +85,4 @@ public class PhotographerDialog extends JDialog
         _copyrightTextArea.setText(_photographer.getCopyright());
     }
 
-    protected void handleException(Throwable t)
-    {
-        t.printStackTrace();
-    }
 }

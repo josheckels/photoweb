@@ -14,8 +14,7 @@ import com.stampysoft.photoGallery.Category;
 public interface CategoryListener
 {
 
-    public void categoryChanged(Category category);
+    void categoryChanged(Category category);
 
-    public void requestAddCategory(Category category);
-
+    void requestAddCategory(Category category);
 }

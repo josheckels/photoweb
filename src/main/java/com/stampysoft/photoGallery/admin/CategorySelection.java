@@ -10,6 +10,7 @@ import java.awt.datatransfer.UnsupportedFlavorException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 
 public class CategorySelection extends TransferHandler
 {
@@ -22,35 +23,31 @@ public class CategorySelection extends TransferHandler
         return TransferHandler.COPY;
     }
 
-    public boolean canImport(JComponent comp, DataFlavor flavor[])
+    public boolean canImport(JComponent comp, DataFlavor[] flavor)
     {
-        if (comp instanceof JList)
+        if (comp instanceof JList<?> list)
         {
-            return ((JList) comp).getModel() instanceof CategoryListModel;
+            return list.getModel() instanceof CategoryListModel;
         }
         return false;
     }
 
     public Transferable createTransferable(JComponent comp)
     {
-        if (comp instanceof JTree)
+        if (comp instanceof JTree tree)
         {
-            TreePath[] paths = ((JTree) comp).getSelectionPaths();
-            java.util.List categories = new ArrayList(paths.length);
-            for (int i = 0; i < paths.length; i++)
-            {
-                categories.add(((CategoryTreeNode) paths[i].getLastPathComponent()).getCategory());
+            TreePath[] paths = tree.getSelectionPaths();
+            java.util.List<Category> categories = new ArrayList<>(paths.length);
+            for (TreePath path : paths) {
+                categories.add(((CategoryTreeNode) path.getLastPathComponent()).getCategory());
             }
             return new CategoryTransferable(categories);
         }
-        else if (comp instanceof JList)
+        else if (comp instanceof JList list)
         {
-            Object[] values = ((JList) comp).getSelectedValues();
-            java.util.List categories = new ArrayList(values.length);
-            for (int i = 0; i < values.length; i++)
-            {
-                categories.add((Category) values[i]);
-            }
+            List<Category> values = list.getSelectedValuesList();
+            java.util.List<Category> categories = new ArrayList<>(values.size());
+            categories.addAll(values);
             return new CategoryTransferable(categories);
         }
         return null;
@@ -65,9 +62,8 @@ public class CategorySelection extends TransferHandler
                 Iterator categories = ((java.util.List) t.getTransferData(FLAVORS[0])).iterator();
                 if (comp instanceof JList)
                 {
-                    if (((JList) comp).getModel() instanceof CategoryListModel)
+                    if (((JList) comp).getModel() instanceof CategoryListModel listModel)
                     {
-                        CategoryListModel listModel = (CategoryListModel) ((JList) comp).getModel();
                         while (categories.hasNext())
                         {
                             listModel.addCategory((Category) categories.next());
@@ -77,20 +73,17 @@ public class CategorySelection extends TransferHandler
                 }
             }
         }
-        catch (UnsupportedFlavorException ignored)
-        {
-        }
-        catch (IOException ignored)
+        catch (UnsupportedFlavorException | IOException ignored)
         {
         }
         return false;
     }
 
-    private class CategoryTransferable implements Transferable
+    private static class CategoryTransferable implements Transferable
     {
-        private java.util.List _categories;
+        private final java.util.List<Category> _categories;
 
-        public CategoryTransferable(java.util.List categories)
+        public CategoryTransferable(java.util.List<Category> categories)
         {
             _categories = categories;
         }

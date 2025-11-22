@@ -17,10 +17,10 @@ import java.awt.event.MouseEvent;
 /**
  * @author josh
  */
-public class RecentCategoryList extends JList
+public class RecentCategoryList extends JList<Category>
 {
 
-    private RecentCategoryListModel _listModel = new RecentCategoryListModel();
+    private final RecentCategoryListModel _listModel = new RecentCategoryListModel();
 
     /**
      * Creates a new instance of RecentCategoryList
@@ -72,9 +72,8 @@ public class RecentCategoryList extends JList
             {
                 if (e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1)
                 {
-                    for (Object o : getSelectedValues())
+                    for (Category category : getSelectedValuesList())
                     {
-                        Category category = (Category) o;
                         AdminModel.getModel().fireRequestAddCategory(category);
                     }
                 }
@@ -82,12 +81,12 @@ public class RecentCategoryList extends JList
         });
     }
 
-    private class RecentCategoryListModel extends DefaultListModel
+    private static class RecentCategoryListModel extends DefaultListModel<Category>
     {
         public void addCategory(Category category)
         {
             int index = size();
-            if (size() > 0 && category.getDescription().compareTo(((Category) get(0)).getDescription()) < 0)
+            if (size() > 0 && category.getDescription().compareTo(get(0).getDescription()) < 0)
             {
                 index = 0;
             }
@@ -95,9 +94,9 @@ public class RecentCategoryList extends JList
             {
                 for (int i = 0; i < size(); i++)
                 {
-                    Category c = (Category) get(i);
+                    Category c = get(i);
                     if (category.getDescription().compareTo(c.getDescription()) > 0 &&
-                        (i == size() - 1 || category.getDescription().compareTo(((Category) get(i + 1)).getDescription()) < 0))
+                        (i == size() - 1 || category.getDescription().compareTo(get(i + 1).getDescription()) < 0))
                     {
                         index = i + 1;
                         break;

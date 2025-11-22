@@ -29,7 +29,7 @@ public class PhotoInfoPanel extends AbstractPanel
     private final JTextArea _captionTextArea = new JTextArea(2, 80);
     private final JCheckBox _privateCheckBox = new JCheckBox("Private");
     private final CategoryListModel _categoryListModel = new CategoryListModel();
-    private final JList _categoryList = new JList(_categoryListModel);
+    private final JList<Category> _categoryList = new JList<>(_categoryListModel);
     private final JButton _saveButton = new JButton("Save");
     private final JButton _deleteButton = new JButton("Delete");
     private final JButton _scanForNewPhotosButton = new JButton("Scan for new photos");
@@ -130,23 +130,21 @@ public class PhotoInfoPanel extends AbstractPanel
     {
         AdminModel.getModel().addPhotoListener(new PhotoListener()
         {
-            public void selectedPhotosChanged(final Photo[] newPhotos, Photo[] oldPhotos)
+            @Override
+            public void selectedPhotosChanged(final java.util.List<Photo> newPhotos, java.util.List<Photo> oldPhotos)
             {
                 saveCurrentPhoto(oldPhotos);
 
-                for (int i = 0; i < newPhotos.length; i++)
-                {
-                    newPhotos[i] = PhotoOperations.getPhotoOperations().merge(newPhotos[i]);
-                }
+                newPhotos.replaceAll(object -> PhotoOperations.getPhotoOperations().merge(object));
 
-                enableButtons(newPhotos.length);
+                enableButtons(newPhotos.size());
 
                 _originalCategories = null;
                 _photographerPanel.refreshPhotos(newPhotos);
 
-                if (newPhotos.length == 1)
+                if (newPhotos.size() == 1)
                 {
-                    final Photo photo = newPhotos[0];
+                    final Photo photo = newPhotos.get(0);
                     AdminFrame.getFrame().setTitle("Photo Gallery: " + photo.getFilename() + " - " + photo.getWidth() + "x" + photo.getHeight());
                     _captionTextArea.setText(photo.getCaption());
                     _privateCheckBox.setSelected(photo.isPrivate());
@@ -172,14 +170,14 @@ public class PhotoInfoPanel extends AbstractPanel
                 }
                 else
                 {
-                    if (newPhotos.length > 1)
+                    if (newPhotos.size() > 1)
                     {
-                        AdminFrame.getFrame().setTitle("Photo Gallery: " + newPhotos.length + " photos selected");
-                        java.util.Set<Category> firstCats = AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(newPhotos[0], true);
+                        AdminFrame.getFrame().setTitle("Photo Gallery: " + newPhotos.size() + " photos selected");
+                        java.util.Set<Category> firstCats = AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(newPhotos.get(0), true);
                         TreeSet<Category> commonCategories = new TreeSet<>(firstCats);
-                        for (int i = 1; i < newPhotos.length; i++)
+                        for (int i = 1; i < newPhotos.size(); i++)
                         {
-                            java.util.Set<Category> cats = AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(newPhotos[i], true);
+                            java.util.Set<Category> cats = AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(newPhotos.get(i), true);
                             commonCategories.removeIf(category -> !cats.contains(category));
                         }
                         _categoryListModel.setCategories(commonCategories);
@@ -202,10 +200,9 @@ public class PhotoInfoPanel extends AbstractPanel
             {
                 if (e.getKeyCode() == KeyEvent.VK_DELETE)
                 {
-                    Object[] selectedObjects = _categoryList.getSelectedValues();
-                    for (Object selectedObject : selectedObjects)
+                    for (Category selectedObject : _categoryList.getSelectedValuesList())
                     {
-                        _categoryListModel.removeCategory((Category) selectedObject);
+                        _categoryListModel.removeCategory(selectedObject);
                     }
                 }
             }
@@ -259,12 +256,9 @@ public class PhotoInfoPanel extends AbstractPanel
         saveCurrentPhoto(AdminModel.getModel().getCurrentPhotos());
     }
 
-    private void saveCurrentPhoto(Photo[] photos)
+    private void saveCurrentPhoto(java.util.List<Photo> photos)
     {
-        for (int i = 0; i < photos.length; i++)
-        {
-            photos[i] = PhotoOperations.getPhotoOperations().merge(photos[i]);
-        }
+        photos.replaceAll(object -> PhotoOperations.getPhotoOperations().merge(object));
 
         try
         {
@@ -276,16 +270,16 @@ public class PhotoInfoPanel extends AbstractPanel
                 }
             }
 
-            if (photos.length == 1)
+            if (photos.size() == 1)
             {
-                photos[0].setCaption(_captionTextArea.getText());
-                photos[0].setPrivate(_privateCheckBox.isSelected());
+                photos.get(0).setCaption(_captionTextArea.getText());
+                photos.get(0).setPrivate(_privateCheckBox.isSelected());
                 if (_categoryListModel.isChanged())
                 {
-                    photos[0].setCategories(_categoryListModel.getCategories());
+                    photos.get(0).setCategories(_categoryListModel.getCategories());
                 }
             }
-            else if (photos.length > 1)
+            else if (photos.size() > 1)
             {
                 for (Category category : _categoryListModel.getCategories())
                 {

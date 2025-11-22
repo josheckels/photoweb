@@ -23,14 +23,14 @@ import java.awt.event.*;
 public class PhotoAdminScreen extends AbstractPanel
 {
 
-    private PhotoListModel _photoListModel = new PhotoListModel();
-    private JList _photoList = new JList(_photoListModel);
+    private final PhotoListModel _photoListModel = new PhotoListModel();
+    private final JList<Photo> _photoList = new JList<>(_photoListModel);
 
-    private CategoryTree _categoryTree = new CategoryTree();
-    private RecentCategoryList _recentCategoryList = new RecentCategoryList();
-    private JButton _setDefaultPhotoButton = new JButton("Set Default Photo");
+    private final CategoryTree _categoryTree = new CategoryTree();
+    private final RecentCategoryList _recentCategoryList = new RecentCategoryList();
+    private final JButton _setDefaultPhotoButton = new JButton("Set Default Photo");
 
-    private PhotoInfoPanel _infoPanel = new PhotoInfoPanel();
+    private final PhotoInfoPanel _infoPanel = new PhotoInfoPanel();
     private JTabbedPane _categoryTabbedPane;
 
     // Type-to-search state for the photo list
@@ -96,17 +96,11 @@ public class PhotoAdminScreen extends AbstractPanel
 
     private void addListeners()
     {
-        _photoList.addListSelectionListener(new ListSelectionListener()
-        {
-            public void valueChanged(ListSelectionEvent e)
+        _photoList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting())
             {
-                if (!e.getValueIsAdjusting())
-                {
-                    Object[] selected = _photoList.getSelectedValues();
-                    Photo[] photos = new Photo[selected.length];
-                    System.arraycopy(selected, 0, photos, 0, photos.length);
-                    AdminModel.getModel().fireSelectedPhotosChanged(photos);
-                }
+                java.util.List<Photo> photos = _photoList.getSelectedValuesList();
+                AdminModel.getModel().fireSelectedPhotosChanged(photos);
             }
         });
 
@@ -142,19 +136,19 @@ public class PhotoAdminScreen extends AbstractPanel
                 }
 
                 String prefix = _photoListTypeBuffer.toString().toLowerCase();
-                if (prefix.length() == 0)
+                if (prefix.isEmpty())
                 {
                     return;
                 }
 
-                ListModel model = _photoList.getModel();
+                ListModel<Photo> model = _photoList.getModel();
                 int bestIndex = -1;
                 for (int i = 0; i < model.getSize(); i++)
                 {
-                    Object obj = model.getElementAt(i);
-                    if (obj instanceof Photo)
+                    Photo obj = model.getElementAt(i);
+                    if (obj != null)
                     {
-                        String name = ((Photo) obj).getFilename();
+                        String name = obj.getFilename();
                         if (name != null && name.toLowerCase().startsWith(prefix))
                         {
                             bestIndex = i;
@@ -216,21 +210,17 @@ public class PhotoAdminScreen extends AbstractPanel
             }
         });
 
-        _categoryTree.getSelectionModel().addTreeSelectionListener(new TreeSelectionListener()
-        {
-            public void valueChanged(TreeSelectionEvent e)
-            {
-                refreshDefaultPhotoButtonStatus();
-            }
-        });
+        _categoryTree.getSelectionModel().addTreeSelectionListener(e -> refreshDefaultPhotoButtonStatus());
 
         AdminModel.getModel().addPhotoListener(new PhotoListener()
         {
-            public void selectedPhotosChanged(Photo[] newPhotos, Photo[] oldPhotos)
+            @Override
+            public void selectedPhotosChanged(java.util.List<Photo> newPhotos, java.util.List<Photo> oldPhotos)
             {
                 refreshDefaultPhotoButtonStatus();
             }
 
+            @Override
             public void requestNextPhotoSelection()
             {
                 int[] indices = _photoList.getSelectedIndices();
@@ -260,54 +250,38 @@ public class PhotoAdminScreen extends AbstractPanel
             }
         });
 
-        _setDefaultPhotoButton.addActionListener(new ActionListener()
-        {
-            public void actionPerformed(ActionEvent e)
+        _setDefaultPhotoButton.addActionListener(e -> {
+            java.util.List<Photo> currentPhotos = AdminModel.getModel().getCurrentPhotos();
+            if (currentPhotos.size() != 1)
             {
-                Photo[] currentPhotos = AdminModel.getModel().getCurrentPhotos();
-                if (currentPhotos.length != 1)
-                {
-                    return;
-                }
-                Photo currentPhoto = currentPhotos[0];
+                return;
+            }
+            Photo currentPhoto = currentPhotos.get(0);
 
-                TreePath[] paths = _categoryTree.getSelectionPaths();
-                if (paths != null)
+            TreePath[] paths = _categoryTree.getSelectionPaths();
+            if (paths != null)
+            {
+                for (TreePath path : paths)
                 {
-                    for (TreePath path : paths)
+                    Category category = ((CategoryTreeNode) path.getLastPathComponent()).getCategory();
+                    if (category.getDefaultPhoto() != null)
                     {
-                        Category category = ((CategoryTreeNode) path.getLastPathComponent()).getCategory();
-                        if (category.getDefaultPhoto() != null)
+                        if (JOptionPane.showConfirmDialog(AdminFrame.getFrame(), "Are you sure you want to change the category photo?", "Change Category Default", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION)
                         {
-                            if (JOptionPane.showConfirmDialog(AdminFrame.getFrame(), "Are you sure you want to change the category photo?", "Change Category Default", JOptionPane.YES_NO_OPTION) != JOptionPane.YES_OPTION)
-                            {
-                                return;
-                            }
+                            return;
                         }
-                        category.setDefaultPhoto(currentPhoto);
-                        AdminModel.getModel().saveCategory(category);
                     }
+                    category.setDefaultPhoto(currentPhoto);
+                    AdminModel.getModel().saveCategory(category);
                 }
             }
         });
 
-        _categoryTabbedPane.addChangeListener(new ChangeListener()
-        {
-            public void stateChanged(ChangeEvent e)
-            {
-                SwingUtilities.invokeLater(new Runnable()
-                {
-                    public void run()
-                    {
-                        _categoryTabbedPane.getSelectedComponent().requestFocus();
-                    }
-                });
-            }
-        });
+        _categoryTabbedPane.addChangeListener(e -> SwingUtilities.invokeLater(() -> _categoryTabbedPane.getSelectedComponent().requestFocus()));
     }
 
     private void refreshDefaultPhotoButtonStatus()
     {
-        _setDefaultPhotoButton.setEnabled(AdminModel.getModel().getCurrentPhotos().length == 1 && _categoryTree.getSelectionCount() > 0);
+        _setDefaultPhotoButton.setEnabled(AdminModel.getModel().getCurrentPhotos().size() == 1 && _categoryTree.getSelectionCount() > 0);
     }
 }

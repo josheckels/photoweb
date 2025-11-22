@@ -20,7 +20,7 @@ public class ResizeAll
 {
     private static volatile int _index = 1;
 
-    public static void main(String args[]) throws Exception
+    public static void main(String... args) throws Exception
     {
         if (args.length == 1)
         {
@@ -32,25 +32,21 @@ public class ResizeAll
         PhotoOperations.getPhotoOperations().beginTransaction();
         final List<Photo> photos = PhotoOperations.getPhotoOperations().getAllPhotos();
 
-        Runnable r = new Runnable()
-        {
-            public void run()
+        Runnable r = () -> {
+            Photo photo = getNextPhoto(photos);
+            while (photo != null)
             {
-                Photo photo = getNextPhoto(photos);
-                while (photo != null)
+                try
                 {
-                    try
-                    {
-                        System.out.println(Thread.currentThread().getName() + " resizing " + (_index + 1) + " of " + photos.size() + ", " + photo.getFilename());
-                        photo.ensureAllResized();
-                    }
-                    catch (Exception e)
-                    {
-                        System.err.println("Failed to size " + photo.getFilename());
-                        e.printStackTrace();
-                    }
-                    photo = getNextPhoto(photos);
+                    System.out.println(Thread.currentThread().getName() + " resizing " + (_index + 1) + " of " + photos.size() + ", " + photo.getFilename());
+                    photo.ensureAllResized();
                 }
+                catch (Exception e)
+                {
+                    System.err.println("Failed to size " + photo.getFilename());
+                    e.printStackTrace();
+                }
+                photo = getNextPhoto(photos);
             }
         };
 

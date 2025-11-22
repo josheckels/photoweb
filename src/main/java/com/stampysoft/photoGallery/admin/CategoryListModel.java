@@ -50,7 +50,7 @@ public class CategoryListModel extends AbstractListModel<Category>
             fireIntervalRemoved(this, 0, oldSize - 1);
         }
         _categories = treeSet;
-        _array = _categories.toArray(new Category[_categories.size()]);
+        _array = _categories.toArray(new Category[0]);
         if (_array.length > 0)
         {
             fireIntervalAdded(this, 0, _array.length - 1);

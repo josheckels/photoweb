@@ -21,12 +21,12 @@ public class AdminModel
 {
 
     private Category _currentCategory;
-    private List<CategoryListener> _categoryListeners = new ArrayList<CategoryListener>();
+    private List<CategoryListener> _categoryListeners = new ArrayList<>();
 
-    private Photo[] _currentPhotos = new Photo[0];
-    private List<PhotoListener> _photoListeners = new ArrayList<PhotoListener>();
+    private List<Photo> _currentPhotos = Collections.emptyList();
+    private List<PhotoListener> _photoListeners = new ArrayList<>();
 
-    private List<PhotographerListener> _photographerListeners = new ArrayList<PhotographerListener>();
+    private List<PhotographerListener> _photographerListeners = new ArrayList<>();
 
     /**
      * Creates a new instance of AdminModel
@@ -37,7 +37,7 @@ public class AdminModel
 
     public void addCategoryListener(CategoryListener cl)
     {
-        List<CategoryListener> newListeners = new ArrayList<CategoryListener>(_categoryListeners);
+        List<CategoryListener> newListeners = new ArrayList<>(_categoryListeners);
         newListeners.add(cl);
         _categoryListeners = newListeners;
     }
@@ -53,7 +53,7 @@ public class AdminModel
 
     public void addPhotographerListener(PhotographerListener pl)
     {
-        List<PhotographerListener> newListeners = new ArrayList<PhotographerListener>(_photographerListeners);
+        List<PhotographerListener> newListeners = new ArrayList<>(_photographerListeners);
         newListeners.add(pl);
         _photographerListeners = newListeners;
     }
@@ -68,14 +68,14 @@ public class AdminModel
 
     public void addPhotoListener(PhotoListener pl)
     {
-        List<PhotoListener> newListeners = new ArrayList<PhotoListener>(_photoListeners);
+        List<PhotoListener> newListeners = new ArrayList<>(_photoListeners);
         newListeners.add(pl);
         _photoListeners = newListeners;
     }
 
-    public void fireSelectedPhotosChanged(Photo[] photos)
+    public void fireSelectedPhotosChanged(List<Photo> photos)
     {
-        Photo[] oldPhotos = _currentPhotos;
+        List<Photo> oldPhotos = _currentPhotos;
         _currentPhotos = photos;
         for (PhotoListener listener : _photoListeners)
         {
@@ -117,7 +117,7 @@ public class AdminModel
 
     public void firePhotoListChanged()
     {
-        fireSelectedPhotosChanged(new Photo[0]);
+        fireSelectedPhotosChanged(Collections.emptyList());
         for (PhotoListener listener : _photoListeners)
         {
             listener.photoListChanged();
@@ -159,7 +159,7 @@ public class AdminModel
         {
             AdminFrame.getFrame().getPhotoOperations().deletePhoto(photo);
         }
-        _currentPhotos = new Photo[0];
+        _currentPhotos = Collections.emptyList();
     }
 
     public void scanForNewPhotos() throws SystemException, PhotoManipulationException
@@ -187,7 +187,7 @@ public class AdminModel
         }
     }
 
-    public Photo[] getCurrentPhotos()
+    public List<Photo> getCurrentPhotos()
     {
         return _currentPhotos;
     }

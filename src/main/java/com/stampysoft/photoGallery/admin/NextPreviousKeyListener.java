@@ -9,7 +9,7 @@ import java.awt.event.KeyEvent;
 */
 class NextPreviousKeyListener extends KeyAdapter
 {
-    private PhotoInfoPanel _photoInfoPanel;
+    private final PhotoInfoPanel _photoInfoPanel;
 
     public NextPreviousKeyListener(PhotoInfoPanel photoInfoPanel)
     {
