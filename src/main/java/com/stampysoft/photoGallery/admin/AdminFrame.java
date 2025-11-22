@@ -9,9 +9,11 @@ package com.stampysoft.photoGallery.admin;
 import com.stampysoft.photoGallery.PhotoOperations;
 import com.stampysoft.photoGallery.ResolutionUtil;
 import com.stampysoft.util.Configuration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import javax.swing.*;
@@ -20,6 +22,8 @@ import java.awt.*;
 /**
  * @author josh
  */
+@ConditionalOnProperty(name = "photoweb.admin.enabled", havingValue = "true", matchIfMissing = false)
+@Lazy(false)
 @Component
 public class AdminFrame extends JFrame
 {
@@ -69,10 +73,19 @@ public class AdminFrame extends JFrame
                 .headless(false)
                 .run(args);
 
-        SwingUtilities.invokeLater(() -> {
-            // Creating the bean triggers AdminFrame constructor which sets up and shows the UI
-            context.getBean(AdminFrame.class);
-        });
+        // Only initialize the AdminFrame when explicitly enabled via property
+        boolean adminEnabled = Boolean.parseBoolean(
+                context.getEnvironment().getProperty("photoweb.admin.enabled", "false")
+        );
+
+        if (adminEnabled) {
+            SwingUtilities.invokeLater(() -> {
+                // Creating the bean triggers AdminFrame constructor which sets up and shows the UI
+                context.getBean(AdminFrame.class);
+            });
+        } else {
+            System.out.println("Admin UI not enabled (set photoweb.admin.enabled=true to show AdminFrame)");
+        }
     }
 
 }
