@@ -138,7 +138,20 @@ public class PhotoOperations
 
     public Photo savePhoto(Photo photo)
     {
+        Photographer photographer = photo.getPhotographer();
+        if (photographer != null && photographer.getPhotographerId() == null)
+        {
+            // Sentinel/transient photographer (e.g. VARIOUS_PHOTOGRAPHER) — don't persist it
+            photo.setPhotographer(null);
+        }
+        else if (photographer != null)
+        {
+            // Re-attach detached photographer into the current session before merging the photo
+            photo.setPhotographer(getEntityManager().merge(photographer));
+        }
         photo = getEntityManager().merge(photo);
+        // Initialize lazy collections while still inside the transaction
+        photo.getCategories(true).size();
         return photo;
     }
 

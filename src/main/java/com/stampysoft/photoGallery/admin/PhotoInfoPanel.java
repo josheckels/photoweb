@@ -166,6 +166,7 @@ public class PhotoInfoPanel extends AbstractPanel
                             _photoLabel.setIcon(null);
                         }
                     };
+                    _originalCategories = new TreeSet<>(AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(photo, true));
                     new Thread(r).start();
                 }
                 else

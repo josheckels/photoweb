@@ -74,6 +74,12 @@ public class PhotographerPanel extends AbstractPanel
             doReload();
         }
 
+        // Remove VARIOUS_PHOTOGRAPHER if it was inserted during a previous multi-selection
+        if (_model.getSize() > 0 && _model.getElementAt(0) == Photographer.VARIOUS_PHOTOGRAPHER)
+        {
+            _model.removeElementAt(0);
+        }
+
         if (newPhotos.isEmpty())
         {
             _editButton.setEnabled(false);
@@ -157,7 +163,7 @@ public class PhotographerPanel extends AbstractPanel
     public Photographer getSelected()
     {
         Photographer photographer = (Photographer) _photographersComboBox.getSelectedItem();
-        if (photographer == Photographer.UNKNOWN_PHOTOGRAPHER)
+        if (photographer == Photographer.UNKNOWN_PHOTOGRAPHER || photographer == Photographer.VARIOUS_PHOTOGRAPHER)
         {
             return null;
         }
