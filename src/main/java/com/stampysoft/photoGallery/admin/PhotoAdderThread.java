@@ -180,6 +180,12 @@ public class PhotoAdderThread extends Thread
             System.err.println("Failed to read EXIF for " + photoToSave.getFilename() + ": " + e.getMessage());
         }
 
+        Photographer defaultPhotographer = AdminFrame.getFrame().getPhotoOperations().getPhotographerByName("Josh Eckels");
+        if (defaultPhotographer != null)
+        {
+            photoToSave.setPhotographer(defaultPhotographer);
+        }
+
         return AdminFrame.getFrame().getPhotoOperations().savePhoto(photoToSave);
     }
 

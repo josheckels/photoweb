@@ -26,7 +26,7 @@ public class PhotoInfoPanel extends AbstractPanel
 {
 
     private final JLabel _photoLabel = new JLabel();
-    private final JTextArea _captionTextArea = new JTextArea(2, 80);
+    private final SpellCheckPane _captionTextArea = new SpellCheckPane(2);
     private final JCheckBox _privateCheckBox = new JCheckBox("Private");
     private final CategoryListModel _categoryListModel = new CategoryListModel();
     private final JList<Category> _categoryList = new JList<>(_categoryListModel);
@@ -70,8 +70,6 @@ public class PhotoInfoPanel extends AbstractPanel
         valueGBC.fill = GridBagConstraints.BOTH;
 
         JScrollPane captionScrollPane = new JScrollPane(_captionTextArea);
-        _captionTextArea.setWrapStyleWord(true);
-        _captionTextArea.setLineWrap(true);
 
         JLabel captionLabel = new JLabel("Caption: ");
         captionLabel.setDisplayedMnemonic('a');
@@ -279,36 +277,42 @@ public class PhotoInfoPanel extends AbstractPanel
                 {
                     photos.get(0).setCategories(_categoryListModel.getCategories());
                 }
+                for (Photo photo : photos)
+                {
+                    AdminModel.getModel().savePhoto(photo, _categoryListModel.isChanged());
+                }
             }
             else if (photos.size() > 1)
             {
+                // Compute the category delta relative to the categories common to all selected photos.
+                java.util.List<Category> toAdd = new java.util.ArrayList<>();
                 for (Category category : _categoryListModel.getCategories())
                 {
                     if (!_originalCategories.contains(category))
                     {
-                        for (Photo photo : photos)
-                        {
-                            AdminFrame.getFrame().getPhotoOperations().addCategoryToPhoto(photo, category);
-                        }
+                        toAdd.add(category);
                     }
                 }
-
+                java.util.List<Category> toRemove = new java.util.ArrayList<>();
                 for (Category category : _originalCategories)
                 {
                     if (!_categoryListModel.getCategories().contains(category))
                     {
-                        for (Photo photo : photos)
-                        {
-                            AdminFrame.getFrame().getPhotoOperations().removeCategoryFromPhoto(photo, category);
-                        }
+                        toRemove.add(category);
                     }
                 }
 
+                // Apply the delta and persist each photo in a single transaction on one managed instance.
+                // Doing this here (rather than mutating the join table and then merging the detached photo
+                // again via savePhoto) avoids a second merge that would revert these category changes.
+                for (int i = 0; i < photos.size(); i++)
+                {
+                    Photo saved = AdminFrame.getFrame().getPhotoOperations().updatePhotoCategories(photos.get(i), toAdd, toRemove);
+                    photos.set(i, saved);
+                    AdminModel.getModel().firePhotoChanged(saved, _categoryListModel.isChanged());
+                }
+
                 _originalCategories = new TreeSet<>(_categoryListModel.getCategories());
-            }
-            for (Photo photo : photos)
-            {
-                AdminModel.getModel().savePhoto(photo, _categoryListModel.isChanged());
             }
         }
         catch (SystemException | PhotoNotFoundException ex)

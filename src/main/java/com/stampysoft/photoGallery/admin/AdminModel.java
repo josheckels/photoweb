@@ -138,7 +138,7 @@ public class AdminModel
 
     public void savePhoto(Photo photo, boolean categoriesChanged) throws SystemException, PhotoNotFoundException
     {
-        AdminFrame.getFrame().getPhotoOperations().savePhoto(photo);
+        photo = AdminFrame.getFrame().getPhotoOperations().savePhoto(photo);
         firePhotoChanged(photo, categoriesChanged);
     }
 
