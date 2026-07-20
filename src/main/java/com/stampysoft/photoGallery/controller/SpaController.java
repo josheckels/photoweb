@@ -9,9 +9,10 @@ public class SpaController {
     // Handle client-side routing - forward to index.html
     @RequestMapping(value = {
         "/",
+        "/categoryList",
         "/category/**",
-        "/categories",
-        "/photo"
+        "/filter",
+        "/photo/**"
     })
 
     public String spa() {
