@@ -23,6 +23,7 @@ import com.stampysoft.util.Configuration;
 public class PhotoAdderThread extends Thread
 {
     private int _photosAdded = -1;
+    private final List<Photo> _newPhotos = new ArrayList<>();
     private final JDialog _dialog;
     private final JProgressBar _progressBar;
     private final JLabel _label;
@@ -37,6 +38,12 @@ public class PhotoAdderThread extends Thread
     public int getPhotosAdded()
     {
         return _photosAdded;
+    }
+
+    /** The photos that were newly created by this scan, as opposed to existing ones that just needed re-resizing. */
+    public List<Photo> getNewPhotos()
+    {
+        return _newPhotos;
     }
 
     public void run()
@@ -77,7 +84,9 @@ public class PhotoAdderThread extends Thread
                     Photo photo = photos.get(photoFile.getName());
                     if (photo == null)
                     {
-                        photosToResize.add(addNewPhoto(photoFile));
+                        Photo newPhoto = addNewPhoto(photoFile);
+                        photosToResize.add(newPhoto);
+                        _newPhotos.add(newPhoto);
                     }
                     else
                     {

@@ -38,6 +38,9 @@ public class PhotoInfoPanel extends AbstractPanel
 
     private TreeSet<Category> _originalCategories = null;
 
+    /** Bumped on the EDT every time the displayed photo changes, so that a slow load can't overwrite a newer one. */
+    private int _thumbnailGeneration = 0;
+
     public PhotoInfoPanel()
     {
         addComponents();
@@ -148,30 +151,17 @@ public class PhotoInfoPanel extends AbstractPanel
                     _privateCheckBox.setSelected(photo.isPrivate());
                     _categoryListModel.setCategories(new java.util.TreeSet<>(AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(photo, true)));
 
-                    Runnable r = () -> {
-                        try
-                        {
-                            photo.ensureAllResized();
-
-                            final Icon thumbnail = createIcon(photo.getRetinaDimensions());
-
-                            Runnable swingRunnable = () -> _photoLabel.setIcon(thumbnail);
-                            SwingUtilities.invokeLater(swingRunnable);
-                        }
-                        catch (IOException | PhotoManipulationException e)
-                        {
-                            handleException(e);
-                            _photoLabel.setIcon(null);
-                        }
-                    };
                     _originalCategories = new TreeSet<>(AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(photo, true));
-                    new Thread(r).start();
+                    showThumbnail(photo);
                 }
                 else
                 {
                     if (newPhotos.size() > 1)
                     {
-                        AdminFrame.getFrame().setTitle("Photo Gallery: " + newPhotos.size() + " photos selected");
+                        // Show the photo the user most recently clicked or arrowed onto, rather than the first one
+                        // in the list, so that each photo added to the selection is visible as it's added.
+                        final Photo leadPhoto = findLeadPhoto(newPhotos);
+                        AdminFrame.getFrame().setTitle("Photo Gallery: " + newPhotos.size() + " photos selected - showing " + leadPhoto.getFilename());
                         java.util.Set<Category> firstCats = AdminFrame.getFrame().getPhotoOperations().getInitializedCategories(newPhotos.get(0), true);
                         TreeSet<Category> commonCategories = new TreeSet<>(firstCats);
                         for (int i = 1; i < newPhotos.size(); i++)
@@ -181,13 +171,14 @@ public class PhotoInfoPanel extends AbstractPanel
                         }
                         _categoryListModel.setCategories(commonCategories);
                         _originalCategories = new TreeSet<>(commonCategories);
+                        showThumbnail(leadPhoto);
                     }
                     else
                     {
                         AdminFrame.getFrame().setTitle("Photo Gallery");
                         _categoryListModel.setCategories(new TreeSet<>());
+                        showThumbnail(null);
                     }
-                    _photoLabel.setIcon(null);
                     _captionTextArea.setText("");
                 }
             }
@@ -248,6 +239,56 @@ public class PhotoInfoPanel extends AbstractPanel
             ImageRenamer renamer = new ImageRenamer(parent);
             renamer.setVisible(true);
         });
+    }
+
+    /**
+     * Returns the element of the selection that the user most recently clicked or arrowed onto, falling back to the
+     * first one. The list has already been merged, so we look up the equal element rather than using the model's
+     * reference directly.
+     */
+    private Photo findLeadPhoto(java.util.List<Photo> photos)
+    {
+        Photo leadPhoto = AdminModel.getModel().getLeadPhoto();
+        int index = leadPhoto == null ? -1 : photos.indexOf(leadPhoto);
+        return index >= 0 ? photos.get(index) : photos.get(0);
+    }
+
+    /**
+     * Loads and displays the given photo in the background. Pass null to clear the image. Must be called on the EDT.
+     */
+    private void showThumbnail(final Photo photo)
+    {
+        final int generation = ++_thumbnailGeneration;
+
+        if (photo == null)
+        {
+            _photoLabel.setIcon(null);
+            return;
+        }
+
+        Runnable r = () -> {
+            Icon thumbnail;
+            try
+            {
+                photo.ensureAllResized();
+                thumbnail = createIcon(photo.getRetinaDimensions());
+            }
+            catch (IOException | PhotoManipulationException e)
+            {
+                handleException(e);
+                thumbnail = null;
+            }
+
+            final Icon icon = thumbnail;
+            SwingUtilities.invokeLater(() -> {
+                // Ignore a load that finished after the selection moved on
+                if (generation == _thumbnailGeneration)
+                {
+                    _photoLabel.setIcon(icon);
+                }
+            });
+        };
+        new Thread(r).start();
     }
 
     public void saveCurrentPhoto()

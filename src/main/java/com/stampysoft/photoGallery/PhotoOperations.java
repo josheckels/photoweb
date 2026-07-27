@@ -17,7 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Repository
 @Transactional
@@ -175,6 +177,17 @@ public class PhotoOperations
     {
         Query query = getEntityManager().createQuery("from Photo order by filename ");
         return (List<Photo>) query.getResultList();
+    }
+
+    /**
+     * Returns the ids of all the photos that aren't in any category. Answering this in bulk lets the admin UI
+     * flag and filter uncategorized photos without running a query per photo.
+     */
+    @Transactional(readOnly = true)
+    public Set<Integer> getUncategorizedPhotoIds()
+    {
+        Query query = getEntityManager().createQuery("select p.photoId from Photo p where p._categories is empty");
+        return new HashSet<>((List<Integer>) query.getResultList());
     }
 
     /**

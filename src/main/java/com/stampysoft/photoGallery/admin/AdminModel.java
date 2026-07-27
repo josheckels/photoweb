@@ -24,6 +24,8 @@ public class AdminModel
     private List<CategoryListener> _categoryListeners = new ArrayList<>();
 
     private List<Photo> _currentPhotos = Collections.emptyList();
+    private Photo _leadPhoto = null;
+    private List<Photo> _lastScanPhotos = Collections.emptyList();
     private List<PhotoListener> _photoListeners = new ArrayList<>();
 
     private List<PhotographerListener> _photographerListeners = new ArrayList<>();
@@ -75,8 +77,19 @@ public class AdminModel
 
     public void fireSelectedPhotosChanged(List<Photo> photos)
     {
+        fireSelectedPhotosChanged(photos, photos.isEmpty() ? null : photos.get(0));
+    }
+
+    /**
+     * @param leadPhoto the photo the user most recently clicked or arrowed onto, which is not necessarily the first
+     * one in the list. The UI shows this one when several photos are selected, so that each photo added to the
+     * selection is visible as it's added.
+     */
+    public void fireSelectedPhotosChanged(List<Photo> photos, Photo leadPhoto)
+    {
         List<Photo> oldPhotos = _currentPhotos;
         _currentPhotos = photos;
+        _leadPhoto = leadPhoto;
         for (PhotoListener listener : _photoListeners)
         {
             listener.selectedPhotosChanged(_currentPhotos, oldPhotos);
@@ -96,6 +109,14 @@ public class AdminModel
         for (PhotoListener listener : _photoListeners)
         {
             listener.requestPreviousPhotoSelection();
+        }
+    }
+
+    public void fireRequestPhotoSelection(Collection<Photo> photos)
+    {
+        for (PhotoListener listener : _photoListeners)
+        {
+            listener.requestPhotoSelection(photos);
         }
     }
 
@@ -151,6 +172,8 @@ public class AdminModel
         throws SystemException, CategoryNotFoundException
     {
         AdminFrame.getFrame().getPhotoOperations().deleteCategory(category);
+        // Photos that were only in this category are now uncategorized, so the photo list has to pick that up
+        firePhotoListChanged();
     }
 
     public void deleteCurrentPhotos()
@@ -182,7 +205,13 @@ public class AdminModel
 
         if (t.getPhotosAdded() > 0)
         {
+            _lastScanPhotos = new ArrayList<>(t.getNewPhotos());
             firePhotoListChanged();
+            // Select a new photo so the user can start categorizing without hunting for it in the list
+            if (!t.getNewPhotos().isEmpty())
+            {
+                fireRequestPhotoSelection(t.getNewPhotos());
+            }
             JOptionPane.showMessageDialog(AdminFrame.getFrame(), "Found " + t.getPhotosAdded() + " new photo(s)");
         }
     }
@@ -190,5 +219,17 @@ public class AdminModel
     public List<Photo> getCurrentPhotos()
     {
         return _currentPhotos;
+    }
+
+    /** The photo the user most recently clicked or arrowed onto, or null if there is no selection. */
+    public Photo getLeadPhoto()
+    {
+        return _leadPhoto;
+    }
+
+    /** The photos created by the most recent scan that actually found new photos. Empty until such a scan runs. */
+    public List<Photo> getLastScanPhotos()
+    {
+        return _lastScanPhotos;
     }
 }

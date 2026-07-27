@@ -33,10 +33,21 @@ public class PhotoAdminScreen extends AbstractPanel
     private final PhotoInfoPanel _infoPanel = new PhotoInfoPanel();
     private JTabbedPane _categoryTabbedPane;
 
+    private final JTextField _filterField = new JTextField(12);
+    private final JCheckBox _uncategorizedOnlyCheckBox = new JCheckBox("Uncategorized only");
+    private final JCheckBox _lastScanOnlyCheckBox = new JCheckBox("New from last scan");
+    private final JLabel _filterStatusLabel = new JLabel();
+
     // Type-to-search state for the photo list
     private final StringBuilder _photoListTypeBuffer = new StringBuilder();
     private long _photoListLastTypeTime = 0L;
     private static final int TYPE_AHEAD_RESET_MS = 1200;
+
+    /** How much of the left column the filter panel and the photo list get before the user drags the divider. */
+    private static final double PHOTO_LIST_HEIGHT_FRACTION = 0.5;
+
+    private boolean _dividerMovedByUser = false;
+    private boolean _movingDivider = false;
 
     public PhotoAdminScreen()
     {
@@ -47,11 +58,11 @@ public class PhotoAdminScreen extends AbstractPanel
         {
             _photoListModel.reload();
             _infoPanel.reload();
-            Photo photo = _photoListModel.getElementAt(0);
-            if (photo != null)
+            if (_photoListModel.getSize() > 0)
             {
-                _photoList.setPrototypeCellValue(photo);
+                _photoList.setPrototypeCellValue(_photoListModel.getElementAt(0));
             }
+            refreshFilterStatus();
         }
         catch (SystemException e)
         {
@@ -64,7 +75,7 @@ public class PhotoAdminScreen extends AbstractPanel
         setLayout(new BorderLayout());
 
         _photoList.setSelectionMode(DefaultListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        _photoList.setCellRenderer(new PhotoListCellRenderer());
+        _photoList.setCellRenderer(new PhotoListCellRenderer(_photoListModel));
 
         JTabbedPane categoryTabbedPane = new JTabbedPane();
 
@@ -83,15 +94,98 @@ public class PhotoAdminScreen extends AbstractPanel
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         JScrollPane photoListScrollPane = new JScrollPane(_photoList);
 
-        photoListScrollPane.setMinimumSize(new Dimension(200, 600));
+        JPanel filterPanel = createFilterPanel();
+        JPanel photoListPanel = new JPanel(new BorderLayout());
+        photoListPanel.add(filterPanel, BorderLayout.NORTH);
+        photoListPanel.add(photoListScrollPane, BorderLayout.CENTER);
+        // The split pane bounds how far the divider can travel by this minimum, so ask only for the filter controls
+        // plus a few rows of list. Demanding more leaves the divider with nowhere to go on a short screen, and
+        // squeezes this whole side of the window. keepDividerCentered decides the size we actually start at.
+        photoListPanel.setMinimumSize(new Dimension(200, filterPanel.getPreferredSize().height + 60));
 
-        splitPane.setTopComponent(photoListScrollPane);
+        splitPane.setTopComponent(photoListPanel);
         splitPane.setBottomComponent(categoryTabbedPane);
+        splitPane.setResizeWeight(PHOTO_LIST_HEIGHT_FRACTION);
+        keepDividerCentered(splitPane);
         add(splitPane, BorderLayout.WEST);
 
         add(_infoPanel, BorderLayout.CENTER);
 
         refreshDefaultPhotoButtonStatus();
+    }
+
+    /**
+     * Keeps the photo list at its share of the left column until the user drags the divider themselves.
+     * <p>
+     * Setting the divider location up front doesn't survive startup: AdminFrame sizes the window to 100 pixels tall
+     * before maximizing it, and the divider gets clamped to the photo list's minimum height while the window is that
+     * small. Every later pixel of height then goes to the category tree, leaving a couple of rows of photos. So wait
+     * for the real size to arrive instead, which also covers the user resizing the window afterwards.
+     */
+    private void keepDividerCentered(JSplitPane splitPane)
+    {
+        splitPane.addComponentListener(new ComponentAdapter()
+        {
+            @Override
+            public void componentResized(ComponentEvent e)
+            {
+                if (!_dividerMovedByUser)
+                {
+                    _movingDivider = true;
+                    try
+                    {
+                        splitPane.setDividerLocation(PHOTO_LIST_HEIGHT_FRACTION);
+                    }
+                    finally
+                    {
+                        _movingDivider = false;
+                    }
+                }
+            }
+        });
+
+        // Resizing on its own never touches this property, so anything we didn't do ourselves is the user dragging
+        splitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
+            if (!_movingDivider)
+            {
+                _dividerMovedByUser = true;
+            }
+        });
+    }
+
+    private JPanel createFilterPanel()
+    {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+
+        GridBagConstraints labelGBC = new GridBagConstraints();
+        labelGBC.anchor = GridBagConstraints.WEST;
+
+        GridBagConstraints valueGBC = new GridBagConstraints();
+        valueGBC.anchor = GridBagConstraints.WEST;
+        valueGBC.gridwidth = GridBagConstraints.REMAINDER;
+        valueGBC.fill = GridBagConstraints.HORIZONTAL;
+        valueGBC.weightx = 1.0;
+
+        JLabel filterLabel = new JLabel("Filter: ");
+        filterLabel.setDisplayedMnemonic('F');
+        filterLabel.setLabelFor(_filterField);
+        _filterField.setToolTipText("Show only photos whose filename contains this text. * and ? match as wildcards, and Escape clears the filter.");
+        panel.add(filterLabel, labelGBC);
+        panel.add(_filterField, valueGBC);
+
+        _uncategorizedOnlyCheckBox.setMnemonic('U');
+        _uncategorizedOnlyCheckBox.setToolTipText("Show only the photos that aren't in any category yet - the ones listed in red");
+        panel.add(_uncategorizedOnlyCheckBox, valueGBC);
+
+        _lastScanOnlyCheckBox.setMnemonic('L');
+        _lastScanOnlyCheckBox.setToolTipText("Show only the photos added by the most recent scan");
+        _lastScanOnlyCheckBox.setEnabled(false);
+        panel.add(_lastScanOnlyCheckBox, valueGBC);
+
+        panel.add(_filterStatusLabel, valueGBC);
+
+        return panel;
     }
 
     private void addListeners()
@@ -100,9 +194,30 @@ public class PhotoAdminScreen extends AbstractPanel
             if (!e.getValueIsAdjusting())
             {
                 java.util.List<Photo> photos = _photoList.getSelectedValuesList();
-                AdminModel.getModel().fireSelectedPhotosChanged(photos);
+                AdminModel.getModel().fireSelectedPhotosChanged(photos, getLeadPhoto());
             }
         });
+
+        _filterField.getDocument().addDocumentListener(new DocumentListener()
+        {
+            public void insertUpdate(DocumentEvent e) { SwingUtilities.invokeLater(PhotoAdminScreen.this::applyFilter); }
+            public void removeUpdate(DocumentEvent e) { SwingUtilities.invokeLater(PhotoAdminScreen.this::applyFilter); }
+            public void changedUpdate(DocumentEvent e) { SwingUtilities.invokeLater(PhotoAdminScreen.this::applyFilter); }
+        });
+
+        _filterField.addKeyListener(new KeyAdapter()
+        {
+            public void keyPressed(KeyEvent e)
+            {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE)
+                {
+                    _filterField.setText("");
+                }
+            }
+        });
+
+        _uncategorizedOnlyCheckBox.addActionListener(e -> applyFilter());
+        _lastScanOnlyCheckBox.addActionListener(e -> applyFilter());
 
         // Type-to-search: when user types, jump to the first photo whose filename starts with the typed text
         _photoList.addKeyListener(new KeyAdapter()
@@ -158,12 +273,7 @@ public class PhotoAdminScreen extends AbstractPanel
                 }
                 if (bestIndex >= 0)
                 {
-                    _photoList.setSelectedIndex(bestIndex);
-                    Rectangle bounds = _photoList.getCellBounds(bestIndex, bestIndex);
-                    if (bounds != null)
-                    {
-                        _photoList.scrollRectToVisible(bounds);
-                    }
+                    selectPhotoIndex(bestIndex);
                 }
             }
         });
@@ -248,6 +358,27 @@ public class PhotoAdminScreen extends AbstractPanel
                     }
                 }
             }
+
+            @Override
+            public void photoListChanged()
+            {
+                // The list model has already reloaded by the time we get here, since it registered first
+                refreshFilterStatus();
+            }
+
+            @Override
+            public void requestPhotoSelection(java.util.Collection<Photo> photos)
+            {
+                ListModel<Photo> model = _photoList.getModel();
+                for (int i = 0; i < model.getSize(); i++)
+                {
+                    if (photos.contains(model.getElementAt(i)))
+                    {
+                        selectPhotoIndex(i);
+                        return;
+                    }
+                }
+            }
         });
 
         _setDefaultPhotoButton.addActionListener(e -> {
@@ -278,6 +409,98 @@ public class PhotoAdminScreen extends AbstractPanel
         });
 
         _categoryTabbedPane.addChangeListener(e -> SwingUtilities.invokeLater(() -> _categoryTabbedPane.getSelectedComponent().requestFocus()));
+    }
+
+    /**
+     * The photo the user most recently clicked or arrowed onto, or null if that cell isn't part of the selection,
+     * which happens when the most recent click deselected a photo.
+     */
+    private Photo getLeadPhoto()
+    {
+        int lead = _photoList.getLeadSelectionIndex();
+        if (lead >= 0 && lead < _photoListModel.getSize() && _photoList.isSelectedIndex(lead))
+        {
+            return _photoListModel.getElementAt(lead);
+        }
+        return null;
+    }
+
+    private void applyFilter()
+    {
+        java.util.List<Photo> previousSelection = _photoList.getSelectedValuesList();
+
+        // Refiltering drops the selection and reselecting it adds the photos back one at a time, each of which
+        // would otherwise be a separate selection change - and every selection change saves the photos being
+        // navigated away from. Marking the whole thing as adjusting collapses it into a single change at the end.
+        ListSelectionModel selectionModel = _photoList.getSelectionModel();
+        selectionModel.setValueIsAdjusting(true);
+        try
+        {
+            _photoListModel.setFilter(_filterField.getText(), _uncategorizedOnlyCheckBox.isSelected(), _lastScanOnlyCheckBox.isSelected());
+            restoreSelection(previousSelection);
+        }
+        finally
+        {
+            selectionModel.setValueIsAdjusting(false);
+        }
+
+        refreshFilterStatus();
+    }
+
+    /** Reselects whichever of the given photos survived the filter, so that narrowing the list isn't destructive. */
+    private void restoreSelection(java.util.List<Photo> photos)
+    {
+        if (photos.isEmpty())
+        {
+            return;
+        }
+
+        java.util.List<Integer> indices = new java.util.ArrayList<>();
+        for (int i = 0; i < _photoListModel.getSize(); i++)
+        {
+            if (photos.contains(_photoListModel.getElementAt(i)))
+            {
+                indices.add(i);
+            }
+        }
+        if (indices.isEmpty())
+        {
+            return;
+        }
+
+        int[] array = new int[indices.size()];
+        for (int i = 0; i < indices.size(); i++)
+        {
+            array[i] = indices.get(i);
+        }
+        _photoList.setSelectedIndices(array);
+
+        Rectangle bounds = _photoList.getCellBounds(array[0], array[0]);
+        if (bounds != null)
+        {
+            _photoList.scrollRectToVisible(bounds);
+        }
+    }
+
+    private void refreshFilterStatus()
+    {
+        int shown = _photoListModel.getSize();
+        int total = _photoListModel.getTotalSize();
+        _filterStatusLabel.setText(shown == total ? total + " photos" : shown + " of " + total + " photos");
+
+        int newPhotoCount = AdminModel.getModel().getLastScanPhotos().size();
+        _lastScanOnlyCheckBox.setText(newPhotoCount == 0 ? "New from last scan" : "New from last scan (" + newPhotoCount + ")");
+        _lastScanOnlyCheckBox.setEnabled(newPhotoCount > 0);
+    }
+
+    private void selectPhotoIndex(int index)
+    {
+        _photoList.setSelectedIndex(index);
+        Rectangle bounds = _photoList.getCellBounds(index, index);
+        if (bounds != null)
+        {
+            _photoList.scrollRectToVisible(bounds);
+        }
     }
 
     private void refreshDefaultPhotoButtonStatus()

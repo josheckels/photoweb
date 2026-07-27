@@ -8,6 +8,7 @@ package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.Photo;
 
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -23,5 +24,8 @@ public abstract class PhotoListener
 
     public void requestNextPhotoSelection() {}
     public void requestPreviousPhotoSelection() {}
+
+    /** Asks the photo list to select whichever of these photos comes first in the list. */
+    public void requestPhotoSelection(Collection<Photo> photos) {}
 
 }

@@ -18,6 +18,13 @@ import java.awt.*;
 public class PhotoListCellRenderer extends DefaultListCellRenderer
 {
 
+    private final PhotoListModel _model;
+
+    public PhotoListCellRenderer(PhotoListModel model)
+    {
+        _model = model;
+    }
+
     public Component getListCellRendererComponent(JList list, Object value, int index, boolean isSelected, boolean hasCellFocus)
     {
         JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, hasCellFocus);
@@ -36,8 +43,8 @@ public class PhotoListCellRenderer extends DefaultListCellRenderer
         {
             label.setFont(label.getFont().deriveFont(Font.PLAIN));
         }
-        boolean hasCategory = AdminFrame.getFrame().getPhotoOperations().photoHasAnyCategory(photo);
-        if (!hasCategory)
+        // Uses the model's cached answer rather than querying, since this runs for every cell on every repaint
+        if (_model.isUncategorized(photo))
         {
             label.setForeground(Color.red);
         }
