@@ -106,8 +106,26 @@ public class Photo implements Comparable<Photo>
     @Column(name = "lens_model")
     private String _lensModel;
 
+    /**
+     * When face detection last ran over this photo, or null if it never has. Set even when zero faces are found,
+     * which is what distinguishes "scanned, nobody in it" from "not scanned yet" and makes the backfill resumable.
+     */
+    @Column(name = "face_scanned_on")
+    @Temporal(TemporalType.TIMESTAMP)
+    private java.util.Date _faceScannedOn;
+
     public Photo()
     {
+    }
+
+    public java.util.Date getFaceScannedOn()
+    {
+        return _faceScannedOn;
+    }
+
+    public void setFaceScannedOn(java.util.Date faceScannedOn)
+    {
+        _faceScannedOn = faceScannedOn;
     }
 
     public Photographer getPhotographer()

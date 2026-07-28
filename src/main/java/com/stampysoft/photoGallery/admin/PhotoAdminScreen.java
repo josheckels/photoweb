@@ -9,6 +9,7 @@ package com.stampysoft.photoGallery.admin;
 import com.stampysoft.gui.AbstractPanel;
 import com.stampysoft.photoGallery.Category;
 import com.stampysoft.photoGallery.Photo;
+import com.stampysoft.photoGallery.faces.PeoplePanel;
 import com.stampysoft.util.SystemException;
 
 import javax.swing.*;
@@ -32,6 +33,10 @@ public class PhotoAdminScreen extends AbstractPanel
 
     private final PhotoInfoPanel _infoPanel = new PhotoInfoPanel();
     private JTabbedPane _categoryTabbedPane;
+    private PeoplePanel _peoplePanel;
+
+    /** Kept so the People tab's badge can be reapplied once the tab exists to put it on. */
+    private int _pendingFaceCount;
 
     private final JTextField _filterField = new JTextField(12);
     private final JCheckBox _uncategorizedOnlyCheckBox = new JCheckBox("Uncategorized only");
@@ -46,8 +51,12 @@ public class PhotoAdminScreen extends AbstractPanel
     /** How much of the left column the filter panel and the photo list get before the user drags the divider. */
     private static final double PHOTO_LIST_HEIGHT_FRACTION = 0.5;
 
+    /** What the left column starts at. Wide enough for the tree, the photo list and a few columns of faces. */
+    private static final int LEFT_COLUMN_WIDTH = 420;
+
     private boolean _dividerMovedByUser = false;
     private boolean _movingDivider = false;
+    private boolean _leftColumnWidthSet = false;
 
     public PhotoAdminScreen()
     {
@@ -91,6 +100,13 @@ public class PhotoAdminScreen extends AbstractPanel
         JScrollPane recentCategoryListScrollPane = new JScrollPane(_recentCategoryList);
         categoryTabbedPane.addTab("Recent Categories", recentCategoryListScrollPane);
 
+        _peoplePanel = new PeoplePanel(AdminFrame.getFrame().getFaceOperations(),
+                AdminFrame.getFrame().getPeopleService(), this::setPendingFaceCount);
+        categoryTabbedPane.addTab("People", _peoplePanel);
+        categoryTabbedPane.setMnemonicAt(categoryTabbedPane.getTabCount() - 1, KeyEvent.VK_E);
+        // The panel counted its proposals while it was being built, before there was a tab to badge
+        refreshPeopleTabTitle();
+
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         JScrollPane photoListScrollPane = new JScrollPane(_photoList);
 
@@ -107,11 +123,44 @@ public class PhotoAdminScreen extends AbstractPanel
         splitPane.setBottomComponent(categoryTabbedPane);
         splitPane.setResizeWeight(PHOTO_LIST_HEIGHT_FRACTION);
         keepDividerCentered(splitPane);
-        add(splitPane, BorderLayout.WEST);
 
-        add(_infoPanel, BorderLayout.CENTER);
+        // A split pane rather than BorderLayout.WEST. WEST grants the left column exactly its preferred width and
+        // gives the rest to CENTER, so the widest thing in the tabbed pane - the People tab, whose table alone asks
+        // for 700 pixels of columns - decided how much of the window the photo preview got, with no divider to take
+        // it back with.
+        JSplitPane mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, splitPane, _infoPanel);
+        // Width from a window resize belongs to the preview; the controls on the left don't need to grow with it
+        mainSplitPane.setResizeWeight(0.0);
+        startLeftColumnAtDefaultWidth(mainSplitPane);
+        add(mainSplitPane, BorderLayout.CENTER);
 
         refreshDefaultPhotoButtonStatus();
+    }
+
+    /**
+     * Starts the left column at a workable width, once, and then leaves it to the user.
+     * <p>
+     * Same startup problem keepDividerCentered works around: AdminFrame sizes the window to 100 pixels before
+     * maximizing it, and a divider location set while the window is that small is just clamped back. So wait until
+     * there's room for both sides at once, place the divider, and never touch it again - after that the column is
+     * whatever the user drags it to.
+     */
+    private void startLeftColumnAtDefaultWidth(JSplitPane splitPane)
+    {
+        splitPane.addComponentListener(new ComponentAdapter()
+        {
+            @Override
+            public void componentResized(ComponentEvent e)
+            {
+                if (_leftColumnWidthSet
+                        || splitPane.getWidth() < LEFT_COLUMN_WIDTH + _infoPanel.getMinimumSize().width)
+                {
+                    return;
+                }
+                _leftColumnWidthSet = true;
+                splitPane.setDividerLocation(LEFT_COLUMN_WIDTH);
+            }
+        });
     }
 
     /**
@@ -500,6 +549,26 @@ public class PhotoAdminScreen extends AbstractPanel
         if (bounds != null)
         {
             _photoList.scrollRectToVisible(bounds);
+        }
+    }
+
+    /** Badges the People tab with how many proposals are waiting, so the queue is visible without opening it. */
+    private void setPendingFaceCount(int pendingFaceCount)
+    {
+        _pendingFaceCount = pendingFaceCount;
+        refreshPeopleTabTitle();
+    }
+
+    private void refreshPeopleTabTitle()
+    {
+        if (_categoryTabbedPane == null || _peoplePanel == null)
+        {
+            return;
+        }
+        int index = _categoryTabbedPane.indexOfComponent(_peoplePanel);
+        if (index >= 0)
+        {
+            _categoryTabbedPane.setTitleAt(index, _pendingFaceCount == 0 ? "People" : "People (" + _pendingFaceCount + ")");
         }
     }
 

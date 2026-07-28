@@ -2,6 +2,10 @@ package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.*;
 import com.stampysoft.photoGallery.common.Resolution;
+import com.stampysoft.photoGallery.faces.FaceEncoder;
+import com.stampysoft.photoGallery.faces.FaceImages;
+import com.stampysoft.photoGallery.faces.FaceMatcher;
+import com.stampysoft.photoGallery.faces.FaceOperations;
 
 import javax.swing.*;
 import java.io.File;
@@ -121,11 +125,78 @@ public class PhotoAdderThread extends Thread
             }
             _photosAdded = photosToResize.size();
 
+            detectFacesInNewPhotos();
+
             SwingUtilities.invokeLater(() -> _dialog.dispose());
         }
         catch (InvocationTargetException | URISyntaxException | InterruptedException e)
         {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Detects faces in the photos this scan just added and proposes matches for them straight away, so the review
+     * queue keeps up with imports instead of needing another full backfill.
+     * <p>
+     * Entirely best-effort: face tagging is optional configuration, and nothing here should be able to fail an
+     * import that has otherwise succeeded.
+     */
+    private void detectFacesInNewPhotos()
+    {
+        if (_newPhotos.isEmpty() || !FaceEncoder.isConfigured())
+        {
+            return;
+        }
+
+        FaceOperations faceOperations = AdminFrame.getFrame().getFaceOperations();
+        List<Integer> scannedPhotoIds = new ArrayList<>();
+
+        SwingUtilities.invokeLater(new CountTotalSetter(_newPhotos.size(),
+                "Detecting faces in " + _newPhotos.size() + " image(s)", _progressBar, _label));
+
+        try (FaceEncoder encoder = new FaceEncoder())
+        {
+            int i = 0;
+            for (Photo photo : _newPhotos)
+            {
+                try
+                {
+                    File file = FaceImages.getDetectionFile(photo);
+                    if (file != null && file.isFile())
+                    {
+                        faceOperations.saveScanResult(photo.getPhotoId(), encoder.encode(file));
+                        scannedPhotoIds.add(photo.getPhotoId());
+                    }
+                }
+                catch (RuntimeException | LinkageError e)
+                {
+                    System.err.println("Failed to detect faces in " + photo.getFilename() + ": " + e.getMessage());
+                }
+                SwingUtilities.invokeLater(new CountSetter(++i, _progressBar));
+            }
+        }
+        catch (RuntimeException | LinkageError e)
+        {
+            // LinkageError too: OpenCV's natives failing to load is an Error, and an import must survive it.
+            System.err.println("Face detection unavailable for this import: " + e.getMessage());
+            return;
+        }
+
+        if (scannedPhotoIds.isEmpty())
+        {
+            return;
+        }
+
+        SwingUtilities.invokeLater(new CountTotalSetter(0, "Matching new faces", _progressBar, _label));
+        try
+        {
+            new FaceMatcher(faceOperations, AdminFrame.getFrame().getPeopleService())
+                    .propagate(scannedPhotoIds, FaceMatcher.NO_PROGRESS);
+        }
+        catch (RuntimeException e)
+        {
+            System.err.println("Failed to match new faces: " + e.getMessage());
         }
     }
 

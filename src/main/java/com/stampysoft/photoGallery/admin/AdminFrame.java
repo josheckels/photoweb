@@ -8,6 +8,8 @@ package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.PhotoOperations;
 import com.stampysoft.photoGallery.ResolutionUtil;
+import com.stampysoft.photoGallery.faces.FaceOperations;
+import com.stampysoft.photoGallery.faces.PeopleService;
 import com.stampysoft.util.Configuration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,12 +30,16 @@ import java.awt.*;
 public class AdminFrame extends JFrame
 {
     private final PhotoOperations photoOperations;
+    private final FaceOperations faceOperations;
+    private final PeopleService peopleService;
 
     @Autowired
-    public AdminFrame(PhotoOperations photoOperations)
+    public AdminFrame(PhotoOperations photoOperations, FaceOperations faceOperations, PeopleService peopleService)
     {
         super("Photo Gallery Admin");
         this.photoOperations = photoOperations;
+        this.faceOperations = faceOperations;
+        this.peopleService = peopleService;
         ResolutionUtil.init();
         _instance = this;
 
@@ -59,6 +65,14 @@ public class AdminFrame extends JFrame
 
     public PhotoOperations getPhotoOperations() {
         return photoOperations;
+    }
+
+    public FaceOperations getFaceOperations() {
+        return faceOperations;
+    }
+
+    public PeopleService getPeopleService() {
+        return peopleService;
     }
 
     public static void main(String... args)

@@ -28,6 +28,17 @@
     <artifactId>photoweb</artifactId>
     <version>1.0-SNAPSHOT</version>
 
+    <properties>
+        <!-- Do not drop back to 4.10.0-1.5.11: its macosx-arm64 libopencv_videoio links against
+             @loader_path/libOrbbecSDK.1.9.dylib, which upstream never packaged, so videoio fails to load and takes
+             FaceDetectorYN's class initializer down with it. 4.11 onwards has no @loader_path dependencies. -->
+        <opencv.version>4.13.0-1.5.13</opencv.version>
+        <openblas.version>0.3.31-1.5.13</openblas.version>
+        <javacpp.version>1.5.13</javacpp.version>
+        <!-- The platform whose OpenCV natives get bundled. Change to linux-x86_64 to build for the server. -->
+        <opencv.native.classifier>macosx-arm64</opencv.native.classifier>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
@@ -93,6 +104,53 @@
             <groupId>org.carrot2</groupId>
             <artifactId>morfologik-speller</artifactId>
             <version>2.1.9</version>
+        </dependency>
+        <!-- pgvector support for the face embedding column. Not managed by the Spring Boot BOM, so pin it to the
+             parent's Hibernate version. Registers the vector JDBC type and the cosine_distance()/inner_product()
+             HQL functions when the dialect is a PostgreSQLDialect. -->
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-vector</artifactId>
+            <version>${hibernate.version}</version>
+        </dependency>
+        <!-- OpenCV (YuNet detection + SFace embedding) for face tagging. The natives are pinned by explicit
+             classifier rather than via opencv-platform: opencv-platform pulls ~1GB of natives for every platform,
+             and the documented way to narrow it (javacpp.platform) only works as a -D command line property, not
+             as a pom property. Face detection is admin-only (see FaceEncoder), so only the machine that runs the
+             admin UI needs natives; add a second block with <classifier>linux-x86_64</classifier> if scanning ever
+             has to run on the server. -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>opencv</artifactId>
+            <version>${opencv.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>opencv</artifactId>
+            <version>${opencv.version}</version>
+            <classifier>${opencv.native.classifier}</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>openblas</artifactId>
+            <version>${openblas.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>openblas</artifactId>
+            <version>${openblas.version}</version>
+            <classifier>${opencv.native.classifier}</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp</artifactId>
+            <version>${javacpp.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp</artifactId>
+            <version>${javacpp.version}</version>
+            <classifier>${opencv.native.classifier}</classifier>
         </dependency>
         <!-- Provides the compiled en_US.dict + en_US.info morfologik resources consumed by SpellCheckPane;
              transitive deps excluded as we only need the resource JAR. NOTE: LanguageTool removed the binary

@@ -55,6 +55,15 @@ public class Configuration
         return result;
     }
 
+    /**
+     * Returns the configured value, or defaultValue if the property isn't set. Use this for optional settings, so
+     * that a missing property degrades a feature instead of failing the whole application.
+     */
+    public String getProperty(String key, String defaultValue)
+    {
+        return _properties.getProperty(key, defaultValue);
+    }
+
     private static Configuration g_configuration;
 
     public static synchronized Configuration getConfiguration()

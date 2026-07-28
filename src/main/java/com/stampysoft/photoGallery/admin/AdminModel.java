@@ -30,6 +30,8 @@ public class AdminModel
 
     private List<PhotographerListener> _photographerListeners = new ArrayList<>();
 
+    private List<FaceListener> _faceListeners = new ArrayList<>();
+
     /**
      * Creates a new instance of AdminModel
      */
@@ -65,6 +67,21 @@ public class AdminModel
         for (PhotographerListener listener : _photographerListeners)
         {
             listener.photographerListChanged();
+        }
+    }
+
+    public void addFaceListener(FaceListener fl)
+    {
+        List<FaceListener> newListeners = new ArrayList<>(_faceListeners);
+        newListeners.add(fl);
+        _faceListeners = newListeners;
+    }
+
+    public void fireFacesChanged()
+    {
+        for (FaceListener listener : _faceListeners)
+        {
+            listener.facesChanged();
         }
     }
 
