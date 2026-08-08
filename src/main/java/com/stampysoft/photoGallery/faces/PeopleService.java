@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -279,6 +280,9 @@ public class PeopleService
             managed.setPersonCategory(managedPerson);
             managed.setConfirmed(true);
             managed.setClusterId(null);
+            // Naming a face is a stronger statement than ignoring it, so it wins - that's the undo for ignoring the
+            // wrong face, without needing a separate step.
+            managed.setIgnored(false);
             count++;
 
             Photo photo = managed.getPhoto();
@@ -298,6 +302,39 @@ public class PeopleService
             {
                 managedPerson.setDefaultPhoto(firstPhoto);
             }
+        }
+        return count;
+    }
+
+    /**
+     * Confirms a batch of proposals as they stand, each as whoever it was proposed as.
+     * <p>
+     * This is the bulk accept behind the import review and the per-photo button: both hand over a mixed batch of
+     * faces belonging to several people, and grouping them by person here means one tagging pass each rather than a
+     * transaction per face. Faces with no proposal on them are skipped, since there's nothing to accept.
+     *
+     * @return how many faces were confirmed
+     */
+    @Transactional
+    public int assignProposedFaces(Collection<PhotoFace> faces)
+    {
+        Map<Integer, List<PhotoFace>> byPerson = new LinkedHashMap<>();
+        Map<Integer, Category> peopleById = new LinkedHashMap<>();
+        for (PhotoFace face : faces)
+        {
+            Category person = face.getPersonCategory();
+            if (person == null)
+            {
+                continue;
+            }
+            byPerson.computeIfAbsent(person.getCategoryId(), k -> new ArrayList<>()).add(face);
+            peopleById.putIfAbsent(person.getCategoryId(), person);
+        }
+
+        int count = 0;
+        for (Map.Entry<Integer, List<PhotoFace>> entry : byPerson.entrySet())
+        {
+            count += assignFaces(entry.getValue(), peopleById.get(entry.getKey()));
         }
         return count;
     }

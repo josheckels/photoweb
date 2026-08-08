@@ -5,6 +5,7 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.File;
@@ -13,7 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Minimal background S3 uploader used by the admin tooling.
+ * Minimal background S3 uploader (and deleter) used by the admin tooling.
  * <p>
  * - Reads configuration from src/config.properties via Configuration
  *   Keys:
@@ -109,6 +110,34 @@ public final class S3Uploader {
         if (!enabled || file == null || !file.exists()) return;
         String finalKey = keyPrefix + key;
         submit(file, finalKey, resizedBucket);
+    }
+
+    public void enqueueDeleteOriginal(String key) {
+        if (!enabled || key == null || key.isEmpty()) return;
+        submitDelete(keyPrefix + key, originalsBucket);
+    }
+
+    public void enqueueDeleteResized(String key) {
+        if (!enabled || key == null || key.isEmpty()) return;
+        submitDelete(keyPrefix + key, resizedBucket);
+    }
+
+    private void submitDelete(String key, String bucket) {
+        executor.submit(() -> {
+            try {
+                log("Deleting from S3 bucket=" + bucket + " key=" + key);
+                DeleteObjectRequest req = DeleteObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(key)
+                        .build();
+                // S3 treats deleting a key that isn't there as a success, so a photo whose upload never happened
+                // (or whose resized variants predate S3) doesn't need to be special-cased here.
+                s3.deleteObject(req);
+                log("Delete complete bucket=" + bucket + " key=" + key);
+            } catch (Throwable t) {
+                log("Delete FAILED bucket=" + bucket + " key=" + key + " error=" + t.getMessage());
+            }
+        });
     }
 
     private void submit(File file, String key, String bucket) {

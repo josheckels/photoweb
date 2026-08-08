@@ -228,6 +228,11 @@ public class FaceMatcher
         List<PhotoFace> unassigned = new ArrayList<>();
         for (PhotoFace face : photoFaces)
         {
+            // A face someone has marked as nobody is out of the running for everyone, permanently.
+            if (face.isIgnored())
+            {
+                continue;
+            }
             if (face.getPersonCategory() == null)
             {
                 if (onlyTheseFaceIds == null || onlyTheseFaceIds.contains(face.getFaceId()))

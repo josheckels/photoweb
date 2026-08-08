@@ -6,6 +6,7 @@ import com.stampysoft.photoGallery.faces.FaceEncoder;
 import com.stampysoft.photoGallery.faces.FaceImages;
 import com.stampysoft.photoGallery.faces.FaceMatcher;
 import com.stampysoft.photoGallery.faces.FaceOperations;
+import com.stampysoft.photoGallery.faces.PhotoFace;
 
 import javax.swing.*;
 import java.io.File;
@@ -28,6 +29,7 @@ public class PhotoAdderThread extends Thread
 {
     private int _photosAdded = -1;
     private final List<Photo> _newPhotos = new ArrayList<>();
+    private final List<PhotoFace> _faceProposals = new ArrayList<>();
     private final JDialog _dialog;
     private final JProgressBar _progressBar;
     private final JLabel _label;
@@ -48,6 +50,15 @@ public class PhotoAdderThread extends Thread
     public List<Photo> getNewPhotos()
     {
         return _newPhotos;
+    }
+
+    /**
+     * The matches propagation proposed for this import, for the caller to put in front of a human. Empty when face
+     * tagging isn't configured, when nothing was detected, or when nobody has confirmed faces to match against yet.
+     */
+    public List<PhotoFace> getFaceProposals()
+    {
+        return _faceProposals;
     }
 
     public void run()
@@ -193,6 +204,9 @@ public class PhotoAdderThread extends Thread
         {
             new FaceMatcher(faceOperations, AdminFrame.getFrame().getPeopleService())
                     .propagate(scannedPhotoIds, FaceMatcher.NO_PROGRESS);
+            // Read back what was proposed rather than counting it, so the caller can show the actual matches for
+            // review. Everything outstanding on a photo this scan created came from the pass above.
+            _faceProposals.addAll(faceOperations.getProposedFacesForPhotos(scannedPhotoIds));
         }
         catch (RuntimeException e)
         {

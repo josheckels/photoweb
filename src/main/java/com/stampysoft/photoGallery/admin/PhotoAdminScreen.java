@@ -31,6 +31,9 @@ public class PhotoAdminScreen extends AbstractPanel
     private final RecentCategoryList _recentCategoryList = new RecentCategoryList();
     private final JButton _setDefaultPhotoButton = new JButton("Set Default Photo");
 
+    private final JPopupMenu _photoListPopupMenu = new JPopupMenu();
+    private final JMenuItem _deletePhotosMenuItem = new JMenuItem("Delete...");
+
     private final PhotoInfoPanel _infoPanel = new PhotoInfoPanel();
     private JTabbedPane _categoryTabbedPane;
     private PeoplePanel _peoplePanel;
@@ -85,6 +88,7 @@ public class PhotoAdminScreen extends AbstractPanel
 
         _photoList.setSelectionMode(DefaultListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         _photoList.setCellRenderer(new PhotoListCellRenderer(_photoListModel));
+        _photoListPopupMenu.add(_deletePhotosMenuItem);
 
         JTabbedPane categoryTabbedPane = new JTabbedPane();
 
@@ -244,6 +248,40 @@ public class PhotoAdminScreen extends AbstractPanel
             {
                 java.util.List<Photo> photos = _photoList.getSelectedValuesList();
                 AdminModel.getModel().fireSelectedPhotosChanged(photos, getLeadPhoto());
+            }
+        });
+
+        _deletePhotosMenuItem.addActionListener(e -> PhotoDeleter.confirmAndDelete(this, _photoList.getSelectedValuesList()));
+
+        _photoList.addMouseListener(new MouseAdapter()
+        {
+            // Both, because which of the two carries the popup trigger is platform-specific
+            public void mousePressed(MouseEvent e) { maybeShowPopup(e); }
+            public void mouseReleased(MouseEvent e) { maybeShowPopup(e); }
+
+            private void maybeShowPopup(MouseEvent e)
+            {
+                if (!e.isPopupTrigger())
+                {
+                    return;
+                }
+
+                // Right-clicking a photo that isn't part of the selection acts on that photo alone, the way lists
+                // usually behave; right-clicking within the selection leaves the whole selection to be acted on.
+                int index = _photoList.locationToIndex(e.getPoint());
+                Rectangle bounds = index < 0 ? null : _photoList.getCellBounds(index, index);
+                if (bounds != null && bounds.contains(e.getPoint()) && !_photoList.isSelectedIndex(index))
+                {
+                    _photoList.setSelectedIndex(index);
+                }
+
+                int selectedCount = _photoList.getSelectedIndices().length;
+                if (selectedCount == 0)
+                {
+                    return;
+                }
+                _deletePhotosMenuItem.setText(selectedCount == 1 ? "Delete Photo..." : "Delete " + selectedCount + " Photos...");
+                _photoListPopupMenu.show(_photoList, e.getX(), e.getY());
             }
         });
 

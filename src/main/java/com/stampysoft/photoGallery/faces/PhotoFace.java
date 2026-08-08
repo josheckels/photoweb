@@ -65,6 +65,17 @@ public class PhotoFace
     @Column(name = "cluster_id")
     private Integer clusterId;
 
+    /**
+     * A human has said this face is nobody: a poster, a photo-in-a-photo, a stranger in the background, or something
+     * that isn't a face at all.
+     * <p>
+     * Distinct from a rejection, which is only ever about one person. Rejecting a face from Alice leaves it in the
+     * pool to be proposed as Bob, clustered, and reviewed again; this takes it out of matching altogether. It also
+     * survives a re-scan, because it's a human decision like a confirmation is.
+     */
+    @Column(name = "ignored", nullable = false)
+    private boolean ignored;
+
     public PhotoFace()
     {
     }
@@ -197,6 +208,16 @@ public class PhotoFace
     public void setClusterId(Integer clusterId)
     {
         this.clusterId = clusterId;
+    }
+
+    public boolean isIgnored()
+    {
+        return ignored;
+    }
+
+    public void setIgnored(boolean ignored)
+    {
+        this.ignored = ignored;
     }
 
     @Override

@@ -24,8 +24,14 @@ CREATE TABLE IF NOT EXISTS photo_face (
   person_category_id INT  REFERENCES category(category_id) ON DELETE SET NULL,
   confirmed          BOOLEAN NOT NULL DEFAULT FALSE,
   match_score        REAL,
-  cluster_id         INT
+  cluster_id         INT,
+  -- A face that is nobody: a poster on the wall, a stranger in the background, a false positive. Excluded from
+  -- seeding, propagation and clustering entirely, rather than rejected against one person at a time.
+  ignored            BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+-- Separately, for databases created before the column existed.
+ALTER TABLE photo_face ADD COLUMN IF NOT EXISTS ignored BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS photo_face_photo_id_idx ON photo_face (photo_id);
 CREATE INDEX IF NOT EXISTS photo_face_person_category_id_idx ON photo_face (person_category_id) WHERE person_category_id IS NOT NULL;

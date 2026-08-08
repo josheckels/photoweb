@@ -8,6 +8,7 @@ package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.Category;
 import com.stampysoft.photoGallery.Photo;
+import com.stampysoft.photoGallery.PhotoOperations;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultTreeCellRenderer;
@@ -22,6 +23,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -37,6 +40,9 @@ public class CategoryTree extends JTree
     private final JMenuItem _exportPhotosMenuItem = new JMenuItem("Export Photos...");
     private final JMenuItem _insertMenuItem = new JMenuItem("Insert");
 
+    /** How many categories the confirmation dialog spells out before it just gives the count. */
+    private static final int MAX_CATEGORIES_SHOWN = 15;
+
     public CategoryTree()
     {
         super(new CategoryTreeNode(null, null));
@@ -51,7 +57,9 @@ public class CategoryTree extends JTree
         _menu.setLightWeightPopupEnabled(true);
         _menu.setOpaque(true);
 
-        _deleteMenuItem.addActionListener(e -> {
+        // This was on the Delete item, where it started an inline rename of the category being deleted; Rename,
+        // meanwhile, had no listener at all and did nothing.
+        _renameMenuItem.addActionListener(e -> {
             final TreePath[] paths = getSelectionPaths();
             SwingUtilities.invokeLater(() -> {
                 if (paths != null && paths.length > 0)
@@ -62,7 +70,11 @@ public class CategoryTree extends JTree
         });
 
         _deleteMenuItem.addActionListener(e -> {
-            TreePath[] paths = getSelectionPaths();
+            List<TreePath> paths = getPathsToDelete();
+            if (paths.isEmpty() || !confirmDelete(paths))
+            {
+                return;
+            }
             for (TreePath path : paths) {
                 CategoryTreeNode node = (CategoryTreeNode) path.getLastPathComponent();
                 CategoryTreeNode parent = (CategoryTreeNode) node.getParent();
@@ -244,6 +256,105 @@ public class CategoryTree extends JTree
             }
 
         });
+    }
+
+    /**
+     * The selected categories that are actually going to be deleted.
+     * <p>
+     * A category takes its whole subtree with it, so anything selected underneath another selection is already
+     * covered. Deleting it again afterwards would be worse than redundant: re-attaching a row that no longer exists
+     * makes JPA treat it as new and insert it back.
+     */
+    private List<TreePath> getPathsToDelete()
+    {
+        TreePath[] paths = getSelectionPaths();
+        if (paths == null)
+        {
+            return List.of();
+        }
+
+        List<TreePath> result = new ArrayList<>();
+        for (TreePath path : paths)
+        {
+            // The root stands for the whole gallery rather than a category, and has nothing to delete
+            if (path.getPathCount() == 1)
+            {
+                continue;
+            }
+            boolean coveredByAnotherSelection = false;
+            for (TreePath other : paths)
+            {
+                if (other != path && other.isDescendant(path))
+                {
+                    coveredByAnotherSelection = true;
+                    break;
+                }
+            }
+            if (!coveredByAnotherSelection)
+            {
+                result.add(path);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Asks before deleting. This is the destructive action in the tree - it cascades through the sub-categories in
+     * the database, and there's no undo - so it's worth spelling out how far it reaches before it happens.
+     */
+    private boolean confirmDelete(List<TreePath> paths)
+    {
+        List<Category> categories = new ArrayList<>();
+        for (TreePath path : paths)
+        {
+            categories.add(((CategoryTreeNode) path.getLastPathComponent()).getCategory());
+        }
+
+        PhotoOperations photoOperations = AdminFrame.getFrame().getPhotoOperations();
+        List<Category> descendants = photoOperations.getDescendantCategories(categories);
+        List<Category> allAffected = new ArrayList<>(categories);
+        allAffected.addAll(descendants);
+        int photoCount = photoOperations.countPhotosInCategories(allAffected);
+
+        StringBuilder message = new StringBuilder();
+        message.append(categories.size() == 1
+                ? "Permanently delete this category?"
+                : "Permanently delete these " + categories.size() + " categories?");
+        message.append("\n\n").append(describe(categories));
+
+        if (!descendants.isEmpty())
+        {
+            message.append("\n").append(descendants.size() == 1
+                    ? "It also deletes this sub-category:"
+                    : "It also deletes these " + descendants.size() + " sub-categories:");
+            message.append("\n\n").append(describe(descendants));
+        }
+
+        message.append("\n");
+        if (photoCount > 0)
+        {
+            message.append("The photos themselves are not deleted - they only lose these categories (")
+                    .append(photoCount).append(photoCount == 1 ? " photo" : " photos").append(" affected).\n");
+        }
+        message.append("This cannot be undone.");
+
+        return JOptionPane.showConfirmDialog(this, message.toString(),
+                categories.size() == 1 ? "Delete Category" : "Delete " + categories.size() + " Categories",
+                JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION;
+    }
+
+    private String describe(List<Category> categories)
+    {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < Math.min(categories.size(), MAX_CATEGORIES_SHOWN); i++)
+        {
+            result.append("    ").append(categories.get(i).getDescription()).append("\n");
+        }
+        if (categories.size() > MAX_CATEGORIES_SHOWN)
+        {
+            result.append("    ... and ").append(categories.size() - MAX_CATEGORIES_SHOWN).append(" more\n");
+        }
+        return result.toString();
     }
 
 }

@@ -166,7 +166,8 @@ CREATE TABLE photo_face (
   person_category_id INT  REFERENCES category(category_id) ON DELETE SET NULL,
   confirmed          BOOLEAN NOT NULL DEFAULT FALSE,
   match_score        REAL,
-  cluster_id         INT
+  cluster_id         INT,
+  ignored            BOOLEAN NOT NULL DEFAULT FALSE   -- nobody at all; see "Faces that are nobody"
 );
 CREATE INDEX ON photo_face (photo_id);
 CREATE INDEX ON photo_face (person_category_id) WHERE person_category_id IS NOT NULL;
@@ -281,7 +282,8 @@ Then apply, in order:
    absence, so never hard-exclude an untagged person.
 2. **One person per photo.** Resolve greedily by descending score; each person consumable once
    per photo.
-3. **Rejection ledger.** Exclude any `(face_id, category_id)` pair in `face_person_rejection`.
+3. **Rejection ledger.** Exclude any `(face_id, category_id)` pair in `face_person_rejection`,
+   and exclude any face with `ignored = true` from scoring altogether.
 4. **Thresholds.** OpenCV's documented same-identity cutoff for SFace cosine is **0.363**.
    Auto-propose at ≥0.50; queue 0.363–0.50 for review; discard below.
 
@@ -339,6 +341,16 @@ as a "Re-run matching" menu item.
 Hook `PhotoAdderThread` to run detection on import and propose matches immediately, so the
 review queue stays short instead of requiring another full backfill.
 
+The import then asks one question about them, in place of the "found N new photos" message:
+`FaceProposalReviewDialog` lists the *people* proposed — a flat checklist, one row per person with
+their match count, all checked. Unchecking somebody rejects every match proposed for them.
+
+People rather than faces, because that's the judgement an import needs and the one that needs no
+photos to make: a batch of new photos is one event, so a person either was at it or wasn't, and if
+they weren't then every match for them is wrong at once however good the crops look. Accepting is
+deliberately not offered here — whoever survives stays pending, to be accepted per photo where the
+overlay shows which face was matched to whom.
+
 ---
 
 ## Managing people going forward
@@ -357,6 +369,9 @@ Category adoptCluster(int clusterId, Category person);  // bulk assign + tag + r
 void     rejectFace(PhotoFace f, Category person);      // writes to the rejection ledger
 void     mergePeople(Category from, Category into);
 ```
+
+Marking a face as nobody lives on `FaceOperations` rather than here, since it involves no person
+at all: `int ignoreFaces(Collection<Long> faceIds)` / `int unignoreFaces(Collection<Long>)`.
 
 `assignFace` tags the photo through
 `PhotoOperations.updatePhotoCategories(photo, List.of(person), List.of())` — the method whose
@@ -407,6 +422,29 @@ directions are required:
   `face_person_rejection` exists for. Without it, every propagation round re-proposes the same
   wrong face and the loop never converges.
 
+### Faces that are nobody
+
+Rejection is always *about a person*: reject a face from Alice and it stays in the pool to be
+proposed as Bob, clustered, and reviewed again. Plenty of faces are nobody at all, though — the
+poster on the bedroom wall that appears in a hundred photos, a face on a T-shirt, a stranger three
+rows back, a detection that isn't a face. Rejecting those one person at a time never converges,
+and they cluster beautifully, so they arrive in the review tab as a big group of somebody who will
+never be named.
+
+`photo_face.ignored` is the face-level version of the same idea: excluded from seeding, from
+propagation, from the unmatched pool and from clustering, for every person at once. It is a human
+decision, so like `confirmed` it **survives a re-scan** — `saveScanResult` keeps ignored faces and
+skips re-detecting the same region, and "Keep confirmed faces" on re-scan keeps them too.
+
+Reversible in one step, because a wrong ignore would otherwise be invisible: ignored faces still
+draw on the `PhotoInfoPanel` overlay, in grey and labelled "nobody", with *This is somebody after
+all* on the right-click menu. Naming an ignored face also clears the flag, since naming is the
+stronger statement.
+
+Available wherever a face is on screen: *This is nobody* on the review-queue and cluster-grid
+context menus (Shift+Delete in the review queue), *Nobody* to dismiss a whole cluster in one
+click, and the same item on the photo preview's face menu.
+
 ---
 
 ## Rules and invariants
@@ -419,8 +457,12 @@ that the tag is wrong.
 Surface those as a report instead ("tagged, no matching face: N photos"), which doubles as the
 detection-recall diagnostic. If that number is large, the problem is Phase 3, not the tags.
 
-**Nothing auto-confirms.** Propagation writes proposals with `confirmed = false`. Only the
-review UI sets `confirmed = true`.
+**Nothing auto-confirms.** Propagation writes proposals with `confirmed = false`. Only a human
+accepting one sets `confirmed = true`, and only in a view that shows the face: the People tab's
+review queue, or the photo preview's overlay and its accept button. Accepting a whole photo's worth
+at once is still a human accepting, because the overlay is the evidence. Rejecting needs no such
+view — the import checklist rejects a person's whole batch sight unseen, and that asymmetry is the
+point.
 
 **Detection and embedding are separate stages.** `model_version` is recorded per face so a
 future model swap only requires re-running Phase 3.
@@ -531,7 +573,8 @@ What this plan turned into, and where the code deviates from it.
   no date column of any kind — coverage is 100% for the newest few thousand photos and thins going
   back, which is the right way round for "who is in photos I'm still taking". Unparseable
   filenames report null rather than guessing.
-- **The review queue is a keyboard loop.** Enter confirms, Delete rejects, and right-click offers
+- **The review queue is a keyboard loop.** Enter confirms, Delete rejects, Shift+Delete marks the
+  face as nobody at all, and right-click offers
   the same plus "this is someone else" (which records the rejection *and* the correction in one
   step) and "select this photo". Working a queue of thousands one button-trip at a time is the
   difference between it getting cleared and not.
@@ -551,6 +594,12 @@ What this plan turned into, and where the code deviates from it.
   no queries beyond the People subtree: the photo's categories are already in the panel's list
   model and every face is already in the overlay's box list, so who is tagged and who is spoken
   for are both known on screen.
+- **A photo's proposals can be accepted in one button.** *Accept N face matches* next to *Show
+  faces* confirms every proposal on the displayed photo, each as whoever it was proposed as. The
+  evidence for all of them is the overlay directly above the button — propagation allows one person
+  per photo, so the proposals there are different people at the same moment, all named on the faces
+  they belong to. The count is loaded whether or not the overlay is switched on, or turning it off
+  would quietly hide what there is to accept.
 - **Right-click names the people already tagged on that photo.** A wrong proposal is usually the
   matcher picking the wrong one of the people who were hand-tagged there, so those get a
   one-click "This is Bob" item each — no typing, no dialog. People already *confirmed* on another

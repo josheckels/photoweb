@@ -37,6 +37,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -95,6 +96,7 @@ public class PeoplePanel extends JPanel
     private final JList<PhotoFace> _clusterFacesList = new JList<>(_clusterFacesModel);
     private final JComboBox<String> _clusterNameCombo = new JComboBox<>();
     private final JButton _assignClusterButton = new JButton("This is...");
+    private final JButton _ignoreClusterButton = new JButton("Nobody");
 
     private final PeopleTableModel _peopleTableModel = new PeopleTableModel();
     private final JTable _peopleTable = new JTable(_peopleTableModel);
@@ -229,7 +231,8 @@ public class PeoplePanel extends JPanel
 
         _clusterFacesList.setLayoutOrientation(JList.HORIZONTAL_WRAP);
         _clusterFacesList.setVisibleRowCount(-1);
-        _clusterFacesList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        // Multi-select so that the odd face that doesn't belong with the rest can be marked as nobody in one go
+        _clusterFacesList.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         _clusterFacesList.setFixedCellWidth(CLUSTER_CROP_SIZE + 16);
         _clusterFacesList.setFixedCellHeight(CLUSTER_CROP_SIZE + 26);
         _clusterFacesList.setCellRenderer(new FaceCellRenderer(CLUSTER_CROP_SIZE, false));
@@ -240,11 +243,15 @@ public class PeoplePanel extends JPanel
         _clusterNameCombo.setPreferredSize(new Dimension(200, _clusterNameCombo.getPreferredSize().height));
         FaceNameCombo.installAutoComplete(_clusterNameCombo);
 
+        _ignoreClusterButton.setToolTipText("Nobody at all - a poster, a stranger in the background, or a bad " +
+                "detection. Every face in this cluster stops being proposed as anyone.");
+
         JPanel namePanel = new JPanel();
         WrapLayout.install(namePanel, 4, 2);
         namePanel.add(new JLabel("Name: "));
         namePanel.add(_clusterNameCombo);
         namePanel.add(_assignClusterButton);
+        namePanel.add(_ignoreClusterButton);
 
         JPanel facesPanel = new JPanel(new BorderLayout());
         facesPanel.add(namePanel, BorderLayout.NORTH);
@@ -334,8 +341,9 @@ public class PeoplePanel extends JPanel
             }
         });
         _clusterFacesList.addMouseListener(new OpenPhotoOnDoubleClick(_clusterFacesList));
-        installOpenPhotoMenu(_clusterFacesList);
+        installClusterFaceMenu(_clusterFacesList);
         _assignClusterButton.addActionListener(e -> assignSelectedCluster());
+        _ignoreClusterButton.addActionListener(e -> ignoreSelectedCluster());
 
         _findMoreButton.addActionListener(e -> findMoreForSelectedPerson());
         _mergeButton.addActionListener(e -> mergeSelectedPerson());
@@ -467,8 +475,9 @@ public class PeoplePanel extends JPanel
         Object[] options = {"Keep confirmed faces", "Delete everything", "Cancel"};
         int answer = JOptionPane.showOptionDialog(this,
                 "Clear detections so that the next scan redoes every photo.\n\n" +
-                "Keep confirmed faces: keeps the matches you've confirmed, and re-detects the rest.\n" +
-                "Delete everything: also throws away confirmed faces and rejections. Do this after\n" +
+                "Keep confirmed faces: keeps the matches you've confirmed and the faces you've marked as\n" +
+                "nobody, and re-detects the rest.\n" +
+                "Delete everything: also throws away confirmed faces, rejections and ignored faces. Do this after\n" +
                 "swapping the embedding model, since embeddings from two models can't be compared.\n\n" +
                 "Photo tags are never removed either way.",
                 "Re-scan everything", JOptionPane.DEFAULT_OPTION, JOptionPane.WARNING_MESSAGE, null, options, options[2]);
@@ -512,6 +521,11 @@ public class PeoplePanel extends JPanel
         _reviewFacesList.getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "confirmFaces");
         _reviewFacesList.getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0), "rejectFaces");
         _reviewFacesList.getInputMap(JComponent.WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, 0), "rejectFaces");
+        // Shift makes the rejection permanent and universal rather than about this one person
+        _reviewFacesList.getInputMap(JComponent.WHEN_FOCUSED).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, InputEvent.SHIFT_DOWN_MASK), "ignoreFaces");
+        _reviewFacesList.getInputMap(JComponent.WHEN_FOCUSED).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_BACK_SPACE, InputEvent.SHIFT_DOWN_MASK), "ignoreFaces");
         _reviewFacesList.getActionMap().put("confirmFaces", new AbstractAction()
         {
             public void actionPerformed(java.awt.event.ActionEvent e)
@@ -524,6 +538,13 @@ public class PeoplePanel extends JPanel
             public void actionPerformed(java.awt.event.ActionEvent e)
             {
                 rejectSelectedProposals();
+            }
+        });
+        _reviewFacesList.getActionMap().put("ignoreFaces", new AbstractAction()
+        {
+            public void actionPerformed(java.awt.event.ActionEvent e)
+            {
+                ignoreFaces(_reviewFacesList.getSelectedValuesList());
             }
         });
 
@@ -542,6 +563,12 @@ public class PeoplePanel extends JPanel
         JMenuItem rejectItem = new JMenuItem("No, this isn't them");
         rejectItem.addActionListener(e -> rejectSelectedProposals());
         menu.add(rejectItem);
+
+        JMenuItem ignoreItem = new JMenuItem("This is nobody - never match it");
+        ignoreItem.setToolTipText("A poster, a stranger in the background, or a bad detection. It stops being " +
+                "proposed as anyone at all. (Shift+Delete)");
+        ignoreItem.addActionListener(e -> ignoreFaces(_reviewFacesList.getSelectedValuesList()));
+        menu.add(ignoreItem);
 
         menu.addSeparator();
         addPeopleTaggedOnThisPhoto(menu);
@@ -620,16 +647,68 @@ public class PeoplePanel extends JPanel
         }
     }
 
-    /** The cluster grid gets the same "take me to that photo" action, minus the confirm/reject ones. */
-    private void installOpenPhotoMenu(JList<PhotoFace> list)
+    /**
+     * The cluster grid gets "take me to that photo" and "this is nobody", but no confirm/reject: nothing here has
+     * been proposed as anyone, so there's nothing to agree or disagree with yet.
+     */
+    private void installClusterFaceMenu(JList<PhotoFace> list)
     {
         attachPopupMenu(list, () -> {
             JPopupMenu menu = new JPopupMenu();
+
+            JMenuItem ignoreItem = new JMenuItem(list.getSelectedIndices().length > 1
+                    ? "These are nobody - never match them" : "This is nobody - never match it");
+            ignoreItem.addActionListener(e -> ignoreFaces(list.getSelectedValuesList()));
+            menu.add(ignoreItem);
+
+            menu.addSeparator();
             JMenuItem openItem = new JMenuItem("Select this photo");
             openItem.addActionListener(e -> openPhoto(list.getSelectedValue()));
             menu.add(openItem);
             return menu;
         });
+    }
+
+    /**
+     * Marks these faces as nobody, so no person is ever proposed for them again.
+     * <p>
+     * Reversible by naming the face on the photo preview, which is the only place an ignored face still shows up.
+     */
+    private void ignoreFaces(List<PhotoFace> faces)
+    {
+        if (faces.isEmpty())
+        {
+            return;
+        }
+        List<Long> faceIds = new ArrayList<>();
+        for (PhotoFace face : faces)
+        {
+            faceIds.add(face.getFaceId());
+        }
+        _faceOperations.ignoreFaces(faceIds);
+        AdminModel.getModel().fireFacesChanged();
+    }
+
+    /**
+     * Marks a whole cluster as nobody, which is the point of having this at cluster granularity at all: a poster on
+     * the wall or a face on a cereal box turns up in dozens of photos and clusters beautifully, so it arrives here
+     * as one big group that can be dismissed in a single click.
+     */
+    private void ignoreSelectedCluster()
+    {
+        ClusterSummary cluster = _clustersList.getSelectedValue();
+        if (cluster == null)
+        {
+            return;
+        }
+        if (JOptionPane.showConfirmDialog(this,
+                "Mark all " + cluster.size() + " face(s) in this cluster as nobody?\n\n" +
+                "They'll never be proposed as anyone again. To undo, click the face on the photo preview and name it.",
+                "Not a person", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE) != JOptionPane.OK_OPTION)
+        {
+            return;
+        }
+        ignoreFaces(_faceOperations.getAllFacesInCluster(cluster.clusterId()));
     }
 
     /**
@@ -1247,9 +1326,11 @@ public class PeoplePanel extends JPanel
         }
         long scanned = _faceOperations.getScannedPhotoCount();
         long faces = _faceOperations.getFaceCount();
+        long ignored = _faceOperations.getIgnoredFaceCount();
         // Already summed while rebuilding the review combo, so no second count query for it
         int pending = _pendingTotal;
         _statusLabel.setText(scanned + " photo(s) scanned, " + faces + " face(s) found, " + pending + " awaiting review, " +
+                (ignored == 0 ? "" : ignored + " marked as nobody, ") +
                 _peopleById.size() + " person categor" + (_peopleById.size() == 1 ? "y" : "ies") + ".");
     }
 

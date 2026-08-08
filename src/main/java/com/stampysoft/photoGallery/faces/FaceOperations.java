@@ -87,6 +87,13 @@ public class FaceOperations
     }
 
     @Transactional(readOnly = true)
+    public long getIgnoredFaceCount()
+    {
+        return ((Number) getEntityManager().createQuery("select count(f) from PhotoFace f where f.ignored = true")
+                .getSingleResult()).longValue();
+    }
+
+    @Transactional(readOnly = true)
     public List<Photo> getPhotosByIds(Collection<Integer> photoIds)
     {
         if (photoIds.isEmpty())
@@ -103,8 +110,8 @@ public class FaceOperations
      * Stamping regardless is what makes the backfill resumable after a crash: an unstamped photo is one that was
      * never looked at, not one that turned out to be a landscape.
      * <p>
-     * Existing unconfirmed faces for the photo are replaced, so a re-scan is idempotent. Confirmed faces are left
-     * alone, because a human decision outranks anything detection has to say.
+     * Existing unconfirmed faces for the photo are replaced, so a re-scan is idempotent. Confirmed and ignored faces
+     * are left alone, because a human decision outranks anything detection has to say.
      */
     @Transactional
     public void saveScanResult(int photoId, List<FaceEncoder.DetectedFace> detectedFaces)
@@ -115,20 +122,20 @@ public class FaceOperations
             return;
         }
 
-        List<PhotoFace> confirmedFaces = castList(getEntityManager()
-                .createQuery("select f from PhotoFace f where f.photo.photoId = :photoId and f.confirmed = true")
+        List<PhotoFace> decidedFaces = castList(getEntityManager()
+                .createQuery("select f from PhotoFace f where f.photo.photoId = :photoId and (f.confirmed = true or f.ignored = true)")
                 .setParameter("photoId", photoId)
                 .getResultList());
 
-        getEntityManager().createQuery("delete from PhotoFace f where f.photo.photoId = :photoId and f.confirmed = false")
+        getEntityManager().createQuery("delete from PhotoFace f where f.photo.photoId = :photoId and f.confirmed = false and f.ignored = false")
                 .setParameter("photoId", photoId)
                 .executeUpdate();
 
         for (FaceEncoder.DetectedFace detected : detectedFaces)
         {
-            // A confirmed face is a human decision, so a re-scan re-detecting the same region leaves it alone
-            // instead of producing a duplicate that needs reviewing all over again.
-            if (overlapsConfirmedFace(confirmedFaces, detected))
+            // A confirmed or ignored face is a human decision, so a re-scan re-detecting the same region leaves it
+            // alone instead of producing a duplicate that needs deciding all over again.
+            if (overlapsDecidedFace(decidedFaces, detected))
             {
                 continue;
             }
@@ -147,10 +154,10 @@ public class FaceOperations
         photo.setFaceScannedOn(new Date());
     }
 
-    /** True if the detection covers essentially the same region as a face that's already been confirmed. */
-    private static boolean overlapsConfirmedFace(List<PhotoFace> confirmedFaces, FaceEncoder.DetectedFace detected)
+    /** True if the detection covers essentially the same region as a face a human has already confirmed or ignored. */
+    private static boolean overlapsDecidedFace(List<PhotoFace> decidedFaces, FaceEncoder.DetectedFace detected)
     {
-        for (PhotoFace existing : confirmedFaces)
+        for (PhotoFace existing : decidedFaces)
         {
             float overlapWidth = Math.min(existing.getX() + existing.getW(), detected.x() + detected.w()) - Math.max(existing.getX(), detected.x());
             float overlapHeight = Math.min(existing.getY() + existing.getH(), detected.y() + detected.h()) - Math.max(existing.getY(), detected.y());
@@ -181,7 +188,11 @@ public class FaceOperations
         }
     }
 
-    /** Clears the scan stamp and every unconfirmed face, so that the backfill will revisit these photos. */
+    /**
+     * Clears the scan stamp and every undecided face, so that the backfill will revisit these photos.
+     *
+     * @param keepConfirmed keeps the faces a human has ruled on - confirmed and ignored alike - and re-detects the rest
+     */
     @Transactional
     public int resetScan(boolean keepConfirmed)
     {
@@ -192,7 +203,8 @@ public class FaceOperations
         }
         else
         {
-            getEntityManager().createQuery("delete from PhotoFace f where f.confirmed = false").executeUpdate();
+            getEntityManager().createQuery("delete from PhotoFace f where f.confirmed = false and f.ignored = false")
+                    .executeUpdate();
         }
         return getEntityManager().createQuery("update Photo p set p._faceScannedOn = null").executeUpdate();
     }
@@ -224,9 +236,11 @@ public class FaceOperations
                 "JOIN (SELECT photo_id, min(category_id) AS category_id FROM photo_category_link " +
                 "      WHERE category_id IN (:personIds) GROUP BY photo_id HAVING count(*) = 1) solo " +
                 "  ON solo.photo_id = f.photo_id " +
-                "JOIN (SELECT photo_id FROM photo_face GROUP BY photo_id HAVING count(*) = 1) single " +
+                // Ignored faces don't count towards "exactly one face" either: a photo of one person standing in
+                // front of a poster is still an unambiguous seed once the poster has been ruled out.
+                "JOIN (SELECT photo_id FROM photo_face WHERE NOT ignored GROUP BY photo_id HAVING count(*) = 1) single " +
                 "  ON single.photo_id = f.photo_id " +
-                "WHERE f.person_category_id IS NULL");
+                "WHERE f.person_category_id IS NULL AND NOT f.ignored");
         query.setParameter("personIds", personCategoryIds);
 
         Map<Long, Integer> result = new LinkedHashMap<>();
@@ -269,7 +283,8 @@ public class FaceOperations
     public List<Integer> getPhotoIdsWithUnassignedFaces()
     {
         Query query = getEntityManager().createQuery(
-                "select distinct f.photo.photoId from PhotoFace f where f.personCategory is null order by f.photo.photoId");
+                "select distinct f.photo.photoId from PhotoFace f " +
+                "where f.personCategory is null and f.ignored = false order by f.photo.photoId");
         return castList(query.getResultList());
     }
 
@@ -294,6 +309,29 @@ public class FaceOperations
                 "select f from PhotoFace f join fetch f.photo left join fetch f.personCategory " +
                 "where f.photo.photoId = :id order by f.faceId");
         query.setParameter("id", photoId);
+        return castList(query.getResultList());
+    }
+
+    /**
+     * The outstanding proposals on these photos: a person is assigned but no human has confirmed it yet.
+     * <p>
+     * Ordered by person and then by photo, because that's the order a batch of proposals gets reviewed in - the
+     * useful judgement about an import is "this person wasn't at this event", which is about one person at a time.
+     */
+    @Transactional(readOnly = true)
+    public List<PhotoFace> getProposedFacesForPhotos(Collection<Integer> photoIds)
+    {
+        if (photoIds.isEmpty())
+        {
+            return new ArrayList<>();
+        }
+        // Both associations are fetched rather than proxied because the review UI reads them after the transaction
+        // has closed. The inner join to the person is also what limits this to faces that were actually proposed.
+        Query query = getEntityManager().createQuery(
+                "select f from PhotoFace f join fetch f.photo join fetch f.personCategory person " +
+                "where f.photo.photoId in :ids and f.confirmed = false and f.ignored = false " +
+                "order by person.description, f.photo.photoId, f.faceId");
+        query.setParameter("ids", photoIds);
         return castList(query.getResultList());
     }
 
@@ -440,12 +478,13 @@ public class FaceOperations
     // Phase 6 - cluster the leftovers
     // ------------------------------------------------------------------------------------------------
 
-    /** Every face that matched nobody, as (faceId, photoId) pairs, in id order. */
+    /** Every face that matched nobody, as (faceId, photoId) pairs, in id order. Ignored faces are not people. */
     @Transactional(readOnly = true)
     public List<FaceRef> getUnmatchedFaceRefs()
     {
         Query query = getEntityManager().createQuery(
-                "select f.faceId, f.photo.photoId from PhotoFace f where f.personCategory is null order by f.faceId");
+                "select f.faceId, f.photo.photoId from PhotoFace f " +
+                "where f.personCategory is null and f.ignored = false order by f.faceId");
         List<FaceRef> result = new ArrayList<>();
         for (Object row : query.getResultList())
         {
@@ -471,7 +510,7 @@ public class FaceOperations
                 "FROM photo_face a " +
                 "CROSS JOIN LATERAL (" +
                 "   SELECT b.face_id, b.embedding FROM photo_face b " +
-                "   WHERE b.person_category_id IS NULL AND b.face_id <> a.face_id " +
+                "   WHERE b.person_category_id IS NULL AND NOT b.ignored AND b.face_id <> a.face_id " +
                 "   ORDER BY b.embedding <=> a.embedding LIMIT " + CLUSTER_NEIGHBOUR_LIMIT + ") neighbour " +
                 "WHERE a.face_id IN (:faceIds) " +
                 "  AND 1 - (a.embedding <=> neighbour.embedding) >= :minimumSimilarity");
@@ -502,7 +541,7 @@ public class FaceOperations
                 "FROM photo_face a " +
                 "CROSS JOIN LATERAL (" +
                 "   SELECT b.face_id, b.photo_id, b.embedding FROM photo_face b " +
-                "   WHERE b.person_category_id IS NULL " +
+                "   WHERE b.person_category_id IS NULL AND NOT b.ignored " +
                 "   ORDER BY b.embedding <=> a.embedding LIMIT " + limitPerExemplar + ") neighbour " +
                 "WHERE a.confirmed = true AND a.person_category_id = :personId " +
                 "  AND 1 - (neighbour.embedding <=> a.embedding) >= :minimumSimilarity");
@@ -721,7 +760,7 @@ public class FaceOperations
     }
 
     // ------------------------------------------------------------------------------------------------
-    // Confirm / reject / reassign
+    // Confirm / reject / ignore / reassign
     // ------------------------------------------------------------------------------------------------
 
     @Transactional
@@ -775,6 +814,52 @@ public class FaceOperations
             managed.setConfirmed(false);
             managed.setMatchScore(null);
         }
+    }
+
+    /**
+     * Marks these faces as nobody at all, so that no person is ever proposed for them again.
+     * <p>
+     * This is the answer to the faces that are never going to be anyone: the poster on the bedroom wall that turns
+     * up in a hundred photos, a face on a T-shirt, a stranger in the background of a beach shot, or a detection that
+     * isn't a face at all. Rejecting those one person at a time never converges, because the next round just
+     * proposes the next-nearest person; and they pollute the unknown clusters, which is where the poster shows up as
+     * a 90-face cluster of somebody you'll never name.
+     * <p>
+     * Any outstanding proposal is dropped, since an ignored face belongs to nobody by definition. Existing
+     * rejections are left alone: they cost nothing and are exactly what's wanted if the face is un-ignored later.
+     *
+     * @return how many faces changed
+     */
+    @Transactional
+    public int ignoreFaces(Collection<Long> faceIds)
+    {
+        if (faceIds.isEmpty())
+        {
+            return 0;
+        }
+        return getEntityManager().createQuery(
+                "update PhotoFace f set f.ignored = true, f.personCategory = null, f.confirmed = false, " +
+                "f.matchScore = null, f.clusterId = null where f.faceId in :ids")
+                .setParameter("ids", faceIds)
+                .executeUpdate();
+    }
+
+    /**
+     * Puts ignored faces back in the pool. They come back unassigned, so the next matching pass treats them as any
+     * other unknown face.
+     *
+     * @return how many faces changed
+     */
+    @Transactional
+    public int unignoreFaces(Collection<Long> faceIds)
+    {
+        if (faceIds.isEmpty())
+        {
+            return 0;
+        }
+        return getEntityManager().createQuery("update PhotoFace f set f.ignored = false where f.faceId in :ids")
+                .setParameter("ids", faceIds)
+                .executeUpdate();
     }
 
     /** Moves every face and rejection from one person onto another, for merging duplicate person categories. */

@@ -33,6 +33,7 @@ public class PhotoInfoPanel extends AbstractPanel
     private final SpellCheckPane _captionTextArea = new SpellCheckPane(2);
     private final JCheckBox _privateCheckBox = new JCheckBox("Private");
     private final JCheckBox _showFacesCheckBox = new JCheckBox("Show faces", true);
+    private final JButton _acceptFacesButton = new JButton("Accept face matches");
     private final CategoryListModel _categoryListModel = new CategoryListModel();
     private final JList<Category> _categoryList = new JList<>(_categoryListModel);
     private final JButton _saveButton = new JButton("Save");
@@ -51,6 +52,9 @@ public class PhotoInfoPanel extends AbstractPanel
 
     /** Where each face landed in the displayed image, so that a click can be turned back into a face. */
     private java.util.List<FaceBox> _faceBoxes = java.util.List.of();
+
+    /** The unconfirmed matches on the displayed photo, which is what the accept button acts on. */
+    private java.util.List<PhotoFace> _proposedFaces = java.util.List.of();
 
     /** Whether the preview/form divider has been placed at a real window size yet. */
     private boolean _formHeightSet = false;
@@ -103,6 +107,10 @@ public class PhotoInfoPanel extends AbstractPanel
         _showFacesCheckBox.setToolTipText("Outline detected faces on the preview. Click a face to name it, or " +
                 "right-click for the people already tagged on this photo.");
         flagsPanel.add(_showFacesCheckBox);
+        flagsPanel.add(Box.createHorizontalStrut(12));
+        _acceptFacesButton.setToolTipText("Confirms every proposed match on this photo at once - the amber names on " +
+                "the preview - and tags the photo with those people.");
+        flagsPanel.add(_acceptFacesButton);
         mutablePanel.add(flagsPanel, valueGBC);
 
         _categoryList.setToolTipText("Drag and drop categories from the tree to add, select and hit Delete to remove");
@@ -136,6 +144,7 @@ public class PhotoInfoPanel extends AbstractPanel
         mutablePanel.add(buttonPanel, valueGBC);
 
         enableButtons(0);
+        setProposedFaces(java.util.List.of());
 
         // A split rather than NORTH/CENTER. NORTH grants the preview exactly its preferred height and not a pixel
         // more, so the photo stayed the same size no matter how much room this side of the window had. Now the
@@ -270,10 +279,8 @@ public class PhotoInfoPanel extends AbstractPanel
             }
         });
 
-        _deleteButton.addActionListener(e -> {
-            AdminModel.getModel().deleteCurrentPhotos();
-            AdminModel.getModel().firePhotoListChanged();
-        });
+        _deleteButton.addActionListener(e ->
+                PhotoDeleter.confirmAndDelete(this, new java.util.ArrayList<>(AdminModel.getModel().getCurrentPhotos())));
 
         _scanForNewPhotosButton.addActionListener(e -> {
             try
@@ -298,6 +305,8 @@ public class PhotoInfoPanel extends AbstractPanel
                 showThumbnail(_displayedPhoto);
             }
         });
+
+        _acceptFacesButton.addActionListener(e -> acceptProposedFaces());
 
         // The preview is rendered to fit the label, so now that the label can change size the image has to be built
         // again to match - otherwise dragging a divider just letterboxes the old one. Coalesced through a timer
@@ -423,6 +432,7 @@ public class PhotoInfoPanel extends AbstractPanel
         final int generation = ++_thumbnailGeneration;
         _displayedPhoto = photo;
         _faceBoxes = java.util.List.of();
+        setProposedFaces(java.util.List.of());
 
         if (photo == null)
         {
@@ -441,6 +451,10 @@ public class PhotoInfoPanel extends AbstractPanel
         Runnable r = () -> {
             Icon thumbnail = null;
             java.util.List<FaceBox> boxes = java.util.List.of();
+            // Loaded whether or not the overlay is switched on, because the accept button has to know about the
+            // proposals either way - otherwise turning "Show faces" off would quietly hide what there is to accept.
+            java.util.List<PhotoFace> faces = loadFaces(photo);
+            java.util.List<PhotoFace> proposals = findProposedFaces(faces);
             try
             {
                 photo.ensureAllResized();
@@ -449,7 +463,6 @@ public class PhotoInfoPanel extends AbstractPanel
                 Dimension logicalSize = preview.logicalSize();
                 if (showFaces)
                 {
-                    java.util.List<PhotoFace> faces = loadFaces(photo);
                     // Laid out in logical pixels so that a click maps straight back onto a box, then drawn through
                     // a scaled transform so the outlines and names come out at the panel's real resolution.
                     boxes = layOutFaces(faces, logicalSize.width, logicalSize.height);
@@ -473,6 +486,7 @@ public class PhotoInfoPanel extends AbstractPanel
                 {
                     _photoLabel.setIcon(icon);
                     _faceBoxes = loadedBoxes;
+                    setProposedFaces(proposals);
                 }
             });
         };
@@ -499,6 +513,65 @@ public class PhotoInfoPanel extends AbstractPanel
         }
     }
 
+    /** The proposals among these faces: somebody has been matched, but no human has confirmed it. */
+    private java.util.List<PhotoFace> findProposedFaces(java.util.List<PhotoFace> faces)
+    {
+        java.util.List<PhotoFace> proposals = new java.util.ArrayList<>();
+        for (PhotoFace face : faces)
+        {
+            if (face.getPersonCategory() != null && !face.isConfirmed() && !face.isIgnored())
+            {
+                proposals.add(face);
+            }
+        }
+        return proposals;
+    }
+
+    /** Points the accept button at this photo's proposals, with the count on it so the offer is visible. */
+    private void setProposedFaces(java.util.List<PhotoFace> proposals)
+    {
+        _proposedFaces = proposals;
+        int count = proposals.size();
+        _acceptFacesButton.setEnabled(count > 0);
+        _acceptFacesButton.setText(count == 0
+                ? "Accept face matches"
+                : "Accept " + count + " face match" + (count == 1 ? "" : "es"));
+    }
+
+    /**
+     * Confirms every proposal on the displayed photo in one go, each as whoever it was proposed as.
+     * <p>
+     * A photo's worth of matches is the natural unit to accept: propagation allows one person per photo, so the
+     * proposals here are for different people who were all at the same moment, and the evidence for all of them is
+     * the overlay directly above the button. What it saves is a right-click and a menu item per face.
+     */
+    private void acceptProposedFaces()
+    {
+        java.util.List<PhotoFace> proposals = _proposedFaces;
+        Photo photo = _displayedPhoto;
+        if (proposals.isEmpty() || photo == null)
+        {
+            return;
+        }
+
+        // Confirming tags the photo, so flush whatever's pending in this panel first rather than having the
+        // category list reloaded out from under unsaved edits.
+        saveCurrentPhoto();
+        AdminFrame.getFrame().getPeopleService().assignProposedFaces(proposals);
+
+        java.util.List<Category> people = new java.util.ArrayList<>();
+        for (PhotoFace face : proposals)
+        {
+            people.add(face.getPersonCategory());
+        }
+        keepPhotoInStepWithTags(photo, people);
+        for (Category person : people)
+        {
+            AdminModel.getModel().fireCategoryChanged(person);
+        }
+        refreshAfterFaceChange();
+    }
+
     /** Turns each face's normalized box into pixel coordinates in the displayed image. */
     private java.util.List<FaceBox> layOutFaces(java.util.List<PhotoFace> faces, int width, int height)
     {
@@ -515,8 +588,12 @@ public class PhotoInfoPanel extends AbstractPanel
     }
 
     /**
-     * Outlines every face on the preview: named and confirmed in green, proposed in amber, and unmatched in red
-     * with a question mark. Doubles as a check on detection quality while editing photos normally.
+     * Outlines every face on the preview: named and confirmed in green, proposed in amber, unmatched in red with a
+     * question mark, and the ones marked as nobody in grey. Doubles as a check on detection quality while editing
+     * photos normally.
+     * <p>
+     * Ignored faces are drawn rather than hidden because this is the only place they still appear, and so the only
+     * place the decision can be taken back.
      */
     private void drawFaceBoxes(BufferedImage image, java.util.List<FaceBox> boxes, double overlayScale)
     {
@@ -535,7 +612,12 @@ public class PhotoInfoPanel extends AbstractPanel
                 PhotoFace face = box.face();
                 Color color;
                 String label;
-                if (face.getPersonCategory() == null)
+                if (face.isIgnored())
+                {
+                    color = new Color(150, 150, 150);
+                    label = "nobody";
+                }
+                else if (face.getPersonCategory() == null)
                 {
                     color = new Color(220, 60, 60);
                     label = "?";
@@ -647,6 +729,25 @@ public class PhotoInfoPanel extends AbstractPanel
     }
 
     /**
+     * Marks this face as nobody, so that no person is ever proposed for it again.
+     * <p>
+     * The click-to-name overlay is where the faces that are never anyone are most obvious - the poster behind the
+     * birthday cake, the stranger three rows back - so it's where saying so belongs.
+     */
+    private void setFaceIgnored(PhotoFace face, boolean ignored)
+    {
+        if (ignored)
+        {
+            AdminFrame.getFrame().getFaceOperations().ignoreFaces(java.util.List.of(face.getFaceId()));
+        }
+        else
+        {
+            AdminFrame.getFrame().getFaceOperations().unignoreFaces(java.util.List.of(face.getFaceId()));
+        }
+        refreshAfterFaceChange();
+    }
+
+    /**
      * Brings the category list back in line with what was just written, then lets the face-changed event redraw the
      * overlay. Redrawing isn't done here as well, because that would re-read and re-scale the 1400px preview twice.
      */
@@ -685,6 +786,21 @@ public class PhotoInfoPanel extends AbstractPanel
             JMenuItem rejectItem = new JMenuItem("No, this isn't " + current.getDescription());
             rejectItem.addActionListener(e -> rejectFaceAssignment(face));
             menu.add(rejectItem);
+        }
+        if (face.isIgnored())
+        {
+            JMenuItem unignoreItem = new JMenuItem("This is somebody after all");
+            unignoreItem.setToolTipText("Puts this face back in the pool, so matching considers it again");
+            unignoreItem.addActionListener(e -> setFaceIgnored(face, false));
+            menu.add(unignoreItem);
+        }
+        else
+        {
+            JMenuItem ignoreItem = new JMenuItem("This is nobody - never match it");
+            ignoreItem.setToolTipText("A poster, a stranger in the background, or a bad detection. It stops being " +
+                    "proposed as anyone at all.");
+            ignoreItem.addActionListener(e -> setFaceIgnored(face, true));
+            menu.add(ignoreItem);
         }
         if (menu.getComponentCount() > 0)
         {
@@ -762,6 +878,33 @@ public class PhotoInfoPanel extends AbstractPanel
             try
             {
                 selectedPhoto.getCategories(true).add(person);
+            }
+            catch (RuntimeException ignored)
+            {
+                // An uninitialized collection can't go stale - merge leaves those alone - so there's nothing to fix
+            }
+        }
+    }
+
+    /**
+     * The same fix-up as {@link #keepSelectionInStepWithTag}, for a batch of people, and only on the photo the tags
+     * were actually written to.
+     * <p>
+     * Scoped to that one photo on purpose: accepting a photo's worth of matches can name several people at once, and
+     * adding them to the other selected photos' collections would have the next merge write those tags to photos
+     * those people aren't in.
+     */
+    private void keepPhotoInStepWithTags(Photo tagged, java.util.Collection<Category> people)
+    {
+        for (Photo selectedPhoto : AdminModel.getModel().getCurrentPhotos())
+        {
+            if (!selectedPhoto.equals(tagged))
+            {
+                continue;
+            }
+            try
+            {
+                selectedPhoto.getCategories(true).addAll(people);
             }
             catch (RuntimeException ignored)
             {

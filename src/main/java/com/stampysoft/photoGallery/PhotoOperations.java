@@ -163,14 +163,64 @@ public class PhotoOperations
         return category;
     }
 
+    /**
+     * Deletes a category, its descendant categories, and its photos' membership of all of them - the parent link and
+     * the join table both cascade in the database. The photos themselves are left alone.
+     * <p>
+     * Note the merge: everything the Swing UI holds is detached, because each call here is its own transaction, and
+     * JPA refuses to remove a detached instance outright.
+     */
     public void deleteCategory(Category category)
     {
-        getEntityManager().remove(category);
+        getEntityManager().remove(merge(category));
     }
 
-    public void deletePhoto(Photo photo)
+    /**
+     * Deletes the given photos and everything the database hangs off them, in a single transaction so that a
+     * failure part way through leaves the whole selection intact.
+     * <p>
+     * The join table rows, comments and detected faces all go with the photo through {@code ON DELETE CASCADE}.
+     * The one reference that doesn't is {@code category.default_photo_id}, whose foreign key has no cascade rule
+     * at all, so a category still pointing at one of these photos would block the delete outright - those
+     * categories are left without a default instead.
+     */
+    public void deletePhotos(java.util.Collection<Photo> photos)
     {
-        getEntityManager().remove(photo);
+        if (photos.isEmpty())
+        {
+            return;
+        }
+
+        List<Photo> managedPhotos = new ArrayList<>();
+        for (Photo photo : photos)
+        {
+            managedPhotos.add(merge(photo));
+        }
+
+        Query query = getEntityManager().createQuery("update Category c set c.defaultPhoto = null where c.defaultPhoto in :photos");
+        query.setParameter("photos", managedPhotos);
+        query.executeUpdate();
+
+        for (Photo photo : managedPhotos)
+        {
+            getEntityManager().remove(photo);
+        }
+    }
+
+    /**
+     * The categories that use one of the given photos as their default, which deleting those photos would leave
+     * without one. Asked up front so the confirmation dialog can say so rather than letting the user find out later.
+     */
+    @Transactional(readOnly = true)
+    public List<Category> getCategoriesWithDefaultPhoto(java.util.Collection<Photo> photos)
+    {
+        if (photos.isEmpty())
+        {
+            return new ArrayList<>();
+        }
+        Query query = getEntityManager().createQuery("select c from Category c where c.defaultPhoto in :photos order by c.description");
+        query.setParameter("photos", photos);
+        return (List<Category>) query.getResultList();
     }
 
     public List<Photo> getAllPhotos()
@@ -239,6 +289,65 @@ public class PhotoOperations
         return (List<Photo>) query.getResultList();
     }
 
+    /**
+     * Everything below the given categories in the tree, recursively, and not the given categories themselves.
+     * <p>
+     * Deleting a category takes its descendants with it - {@code category_parent_category_id} cascades - so the
+     * confirmation dialog needs to be able to say how much else is about to go.
+     */
+    @Transactional(readOnly = true)
+    public List<Category> getDescendantCategories(java.util.Collection<Category> categories)
+    {
+        if (categories.isEmpty())
+        {
+            return new ArrayList<>();
+        }
+
+        java.util.Map<Integer, List<Integer>> childrenByParent = new java.util.HashMap<>();
+        java.util.Map<Integer, Category> categoriesById = new java.util.HashMap<>();
+        for (Category category : getAllCategories(true, false))
+        {
+            childrenByParent.computeIfAbsent(category.getParentCategoryId(), k -> new ArrayList<>()).add(category.getCategoryId());
+            categoriesById.put(category.getCategoryId(), category);
+        }
+
+        java.util.Set<Integer> subtreeIds = new java.util.HashSet<>();
+        for (Category category : categories)
+        {
+            collectSubtreeIds(category.getCategoryId(), childrenByParent, subtreeIds);
+        }
+        // What was passed in is the root of each subtree, not a descendant of it
+        for (Category category : categories)
+        {
+            subtreeIds.remove(category.getCategoryId());
+        }
+
+        List<Category> result = new ArrayList<>();
+        for (Integer categoryId : subtreeIds)
+        {
+            Category category = categoriesById.get(categoryId);
+            if (category != null)
+            {
+                result.add(category);
+            }
+        }
+        result.sort(java.util.Comparator.comparing(c -> String.valueOf(c.getDescription()), String.CASE_INSENSITIVE_ORDER));
+        return result;
+    }
+
+    /** How many distinct photos are linked to any of these categories directly. Descendants are not walked. */
+    @Transactional(readOnly = true)
+    public int countPhotosInCategories(java.util.Collection<Category> categories)
+    {
+        if (categories.isEmpty())
+        {
+            return 0;
+        }
+        Query query = getEntityManager().createQuery("select count(distinct p.photoId) from Photo p join p._categories c where c in :categories");
+        query.setParameter("categories", categories);
+        return ((Number) query.getSingleResult()).intValue();
+    }
+
     private void collectSubtreeIds(Integer categoryId, java.util.Map<Integer, List<Integer>> childrenByParent, java.util.Set<Integer> accumulator)
     {
         if (categoryId == null || !accumulator.add(categoryId))
@@ -281,9 +390,10 @@ public class PhotoOperations
         getEntityManager().merge(photographer);
     }
 
+    /** Merged first for the same reason as {@link #deleteCategory}: what the UI hands us is always detached. */
     public void deletePhotographer(Photographer photographer)
     {
-        getEntityManager().remove(photographer);
+        getEntityManager().remove(merge(photographer));
     }
 
     public Photographer getPhotographerById(Long photographerId)

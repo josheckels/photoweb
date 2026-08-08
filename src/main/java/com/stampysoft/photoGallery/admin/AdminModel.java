@@ -7,6 +7,8 @@
 package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.*;
+import com.stampysoft.photoGallery.faces.FaceProposalReviewDialog;
+import com.stampysoft.photoGallery.faces.PhotoFace;
 import com.stampysoft.util.SystemException;
 
 import javax.swing.*;
@@ -193,15 +195,6 @@ public class AdminModel
         firePhotoListChanged();
     }
 
-    public void deleteCurrentPhotos()
-    {
-        for (Photo photo : _currentPhotos)
-        {
-            AdminFrame.getFrame().getPhotoOperations().deletePhoto(photo);
-        }
-        _currentPhotos = Collections.emptyList();
-    }
-
     public void scanForNewPhotos() throws SystemException, PhotoManipulationException
     {
         final JDialog dialog = new JDialog(AdminFrame.getFrame(), "Scanning...", true);
@@ -223,13 +216,25 @@ public class AdminModel
         if (t.getPhotosAdded() > 0)
         {
             _lastScanPhotos = new ArrayList<>(t.getNewPhotos());
+
+            // Asked before the list is rebuilt and a photo is selected, so that the panel opens on what survived
+            // the review rather than on proposals that were just thrown away.
+            List<PhotoFace> proposals = t.getFaceProposals();
+            if (proposals.isEmpty())
+            {
+                JOptionPane.showMessageDialog(AdminFrame.getFrame(), "Found " + t.getPhotosAdded() + " new photo(s)");
+            }
+            else
+            {
+                FaceProposalReviewDialog.review(t.getPhotosAdded(), proposals);
+            }
+
             firePhotoListChanged();
             // Select a new photo so the user can start categorizing without hunting for it in the list
             if (!t.getNewPhotos().isEmpty())
             {
                 fireRequestPhotoSelection(t.getNewPhotos());
             }
-            JOptionPane.showMessageDialog(AdminFrame.getFrame(), "Found " + t.getPhotosAdded() + " new photo(s)");
         }
     }
 

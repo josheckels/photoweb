@@ -105,3 +105,5 @@ CREATE TABLE IF NOT EXISTS face_person_rejection (
     category_id INT    NOT NULL REFERENCES category(category_id) ON DELETE CASCADE,
     PRIMARY KEY (face_id, category_id)
     );
+
+ALTER TABLE photo_face ADD COLUMN IF NOT EXISTS ignored BOOLEAN NOT NULL DEFAULT FALSE;
