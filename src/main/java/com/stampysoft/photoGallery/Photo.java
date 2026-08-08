@@ -114,8 +114,25 @@ public class Photo implements Comparable<Photo>
     @Temporal(TemporalType.TIMESTAMP)
     private java.util.Date _faceScannedOn;
 
+    /**
+     * Who is asking, for the duration of the request being serialized. Defaults to {@link Visibility#NONE} so
+     * that a path which forgets to set it renders empty rather than unfiltered.
+     */
+    @Transient
+    private Visibility _visibility = Visibility.NONE;
+
     public Photo()
     {
+    }
+
+    public Visibility getVisibility()
+    {
+        return _visibility;
+    }
+
+    public void setVisibility(Visibility visibility)
+    {
+        _visibility = visibility == null ? Visibility.NONE : visibility;
     }
 
     public java.util.Date getFaceScannedOn()
@@ -138,12 +155,20 @@ public class Photo implements Comparable<Photo>
         _photographer = photographer;
     }
 
+    /**
+     * The categories this photo is tagged with that the visitor is allowed to know about. This used to serialize
+     * every tag regardless of the private flag, which is exactly what would have leaked the People tags this is
+     * meant to keep off the public site.
+     */
     @JsonGetter("categories")
     public List<Integer> getCategoriesNonRecursive()
     {
         List<Integer> result = new ArrayList<>();
         for (Category category : getCategories()) {
-            result.add(category.getCategoryId());
+            if (_visibility.canSee(category))
+            {
+                result.add(category.getCategoryId());
+            }
         }
         return result;
     }

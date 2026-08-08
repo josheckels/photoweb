@@ -41,71 +41,235 @@ public class PhotoOperations
 //    }
 
 
-    public List<Category> getCategoriesByParentId(Long parentId, boolean includePrivate)
+    /**
+     * Works out what this visitor is allowed to see, once, for the whole request.
+     * <p>
+     * Two id sets do the work. The first is every photo tagged with somebody who has opted out of appearing
+     * publicly; the second is every photo reachable from a category the visitor holds a share token for, which
+     * is what puts the first set's photos back for the people who were at the event. Computing them here rather
+     * than adding clauses to a dozen queries is what keeps the rule in one place - see {@link Visibility}.
+     *
+     * @param unlockedCategoryIds categories this visitor has unlocked with a share token; may be empty
+     */
+    @Transactional(readOnly = true)
+    public Visibility createVisibility(java.util.Collection<Integer> unlockedCategoryIds)
     {
-        if (parentId == null)
-        {
-            return getRootCategories(includePrivate);
-        }
-        Query query = getEntityManager().createQuery("from Category where parentCategory = :parentId " + (includePrivate ? "" : "and _private = :includePrivate ") + " order by description ");
-        query.setParameter("parentId", parentId);
-        if (!includePrivate)
-        {
-            query.setParameter("includePrivate", includePrivate);
-        }
-        return (List<Category>) query.getResultList();
+        return Visibility.anonymous(getOptOutHiddenPhotoIds(), getPhotoIdsInSubtrees(unlockedCategoryIds));
     }
 
-    public Category getCategoryByCategoryId(Long categoryId, boolean includePrivate)
+    /** Every photo tagged with a person who has opted out of appearing publicly. */
+    private Set<Integer> getOptOutHiddenPhotoIds()
     {
-        Query query = getEntityManager().createQuery("from Category where categoryId " + (categoryId == null ? "IS NULL" : "= :categoryId ") + (includePrivate ? "" : " and _private = :includePrivate") + " order by description ");
-        if (categoryId != null)
+        Query query = getEntityManager().createQuery("select distinct p.photoId from Photo p join p._categories c where c._optOut = true");
+        return new HashSet<>((List<Integer>) query.getResultList());
+    }
+
+    /**
+     * Every photo reachable from any of the given categories: a public category expands to its whole subtree, a
+     * private one to itself alone.
+     * <p>
+     * That asymmetry is the whole safety story for unhide links. The children map is built from the public
+     * categories only, so expansion can never descend into a private subtree; a private category named directly
+     * is added as a single id and contributes only the photos linked to it. A token on somebody's category
+     * therefore unlocks that person's photos and nothing else - never everybody under a shared parent.
+     * <p>
+     * Which private categories get this far is decided by {@link #getCategoryIdsByShareTokens}, not here.
+     * <p>
+     * Reaching a photo is not the same as it being visible: {@link Visibility#canSee(Photo)} still refuses a
+     * {@code private} photo, and no amount of unlocking makes a category visible.
+     */
+    private Set<Integer> getPhotoIdsInSubtrees(java.util.Collection<Integer> categoryIds)
+    {
+        if (categoryIds == null || categoryIds.isEmpty())
         {
-            query.setParameter("categoryId", categoryId);
+            return Set.of();
         }
-        if (!includePrivate)
+
+        List<Category> publicCategories = (List<Category>) getEntityManager()
+                .createQuery("from Category where _private = false").getResultList();
+        java.util.Map<Integer, List<Integer>> childrenByParent = new java.util.HashMap<>();
+        Set<Integer> publicIds = new HashSet<>();
+        for (Category category : publicCategories)
         {
-            query.setParameter("includePrivate", includePrivate);
+            childrenByParent.computeIfAbsent(category.getParentCategoryId(), k -> new ArrayList<>()).add(category.getCategoryId());
+            publicIds.add(category.getCategoryId());
         }
-        Category result = (Category) query.getSingleResult();
-        if (result != null)
+
+        Set<Integer> subtreeIds = new HashSet<>();
+        for (Integer categoryId : categoryIds)
         {
-            result.setIncludePrivate(includePrivate);
+            if (categoryId == null)
+            {
+                continue;
+            }
+            if (publicIds.contains(categoryId))
+            {
+                collectSubtreeIds(categoryId, childrenByParent, subtreeIds);
+            }
+            else
+            {
+                // Private: itself and no descendants. Not passed to collectSubtreeIds at all, so there is no
+                // path by which a private category's children can be walked.
+                subtreeIds.add(categoryId);
+            }
+        }
+        if (subtreeIds.isEmpty())
+        {
+            return Set.of();
+        }
+
+        Query query = getEntityManager().createQuery("select distinct p.photoId from Photo p join p._categories c where c.categoryId in :categoryIds");
+        query.setParameter("categoryIds", subtreeIds);
+        return new HashSet<>((List<Integer>) query.getResultList());
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasOwnerToken()
+    {
+        String token = getSetting(AppSetting.OWNER_TOKEN);
+        return token != null && !token.isBlank();
+    }
+
+    /** Mints a new owner token, invalidating the previous one, and returns it. */
+    public String regenerateOwnerToken()
+    {
+        String token = ShareTokens.generate();
+        setSetting(AppSetting.OWNER_TOKEN, token);
+        return token;
+    }
+
+    /**
+     * The current owner token, or null if there isn't one - which is how owner unlock stays switched off until
+     * you deliberately turn it on, there being no default value and no fallback. Callers compare against it with
+     * {@link ShareTokens#equalsConstantTime}; it is fetched rather than compared here so that checking a handful
+     * of presented tokens is one query rather than one apiece.
+     */
+    @Transactional(readOnly = true)
+    public String getOwnerToken()
+    {
+        String token = getSetting(AppSetting.OWNER_TOKEN);
+        return token == null || token.isBlank() ? null : token.trim();
+    }
+
+    @Transactional(readOnly = true)
+    public String getSetting(String name)
+    {
+        AppSetting setting = getEntityManager().find(AppSetting.class, name);
+        return setting == null ? null : setting.getValue();
+    }
+
+    public void setSetting(String name, String value)
+    {
+        AppSetting setting = getEntityManager().find(AppSetting.class, name);
+        if (setting == null)
+        {
+            getEntityManager().persist(new AppSetting(name, value));
+        }
+        else
+        {
+            setting.setValue(value);
+        }
+    }
+
+    /**
+     * The categories a batch of share links point at, keyed by the token that reaches each one. A token matching
+     * nothing is simply absent from the map. One query rather than one apiece, because {@code /unlock} takes
+     * several tokens at a time.
+     * <p>
+     * Private categories are included here, unlike {@link #getCategoryIdsByShareTokens}: the caller is deciding
+     * whether to accept a link rather than deciding what it may see, and a token on a private category has to be
+     * recognised in order to be turned down.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Category> getCategoriesByShareTokens(java.util.Collection<String> shareTokens)
+    {
+        if (shareTokens == null || shareTokens.isEmpty())
+        {
+            return java.util.Map.of();
+        }
+        Query query = getEntityManager().createQuery("from Category where _shareToken in :shareTokens");
+        query.setParameter("shareTokens", shareTokens);
+        java.util.Map<String, Category> result = new java.util.HashMap<>();
+        for (Category category : (List<Category>) query.getResultList())
+        {
+            result.put(category.getShareToken(), category);
         }
         return result;
     }
 
-    public List<Category> getRootCategories(boolean includePrivate)
+    /**
+     * The categories unlocked by a batch of share tokens, ignoring any that match nothing. This is what turns the
+     * tokens in a visitor's cookie back into an answer on each request, so a token that has since been
+     * regenerated or removed stops working the moment it does.
+     * <p>
+     * A private category counts only when it has opted out, which is the unhide link: a person's category is
+     * private, and their token is how the family gets to see somebody who is hidden. Gating on
+     * {@code public_opt_out} rather than merely on being private keeps two properties. A token on an event that
+     * is later marked private still stops working, as it always did - the category isn't hiding anybody, so
+     * there is nothing for its token to put back. And a token on the People root does nothing, because the root
+     * isn't a person and has no opt-out.
+     * <p>
+     * What an accepted private category unlocks is bounded in {@link #getPhotoIdsInSubtrees}, which expands it
+     * to itself alone and never descends into it. The category stays invisible either way, since
+     * {@link Visibility#canSee(Category)} reads neither id set.
+     */
+    @Transactional(readOnly = true)
+    public Set<Integer> getCategoryIdsByShareTokens(java.util.Collection<String> shareTokens)
     {
-        Query query = getEntityManager().createQuery("from Category where parentCategory is null " + (includePrivate ? "" : " and _private = :includePrivate ") + "order by description ");
-        if (!includePrivate)
+        if (shareTokens == null || shareTokens.isEmpty())
         {
-            query.setParameter("includePrivate", includePrivate);
+            return Set.of();
         }
-        return (List<Category>) query.getResultList();
+        Query query = getEntityManager().createQuery(
+                "select c.categoryId from Category c where c._shareToken in :shareTokens " +
+                        "and (c._private = false or c._optOut = true)");
+        query.setParameter("shareTokens", shareTokens);
+        return new HashSet<>((List<Integer>) query.getResultList());
     }
 
-    public List<Category> getAllCategoriesAndDefaultPhotos(boolean includePrivate)
+    public List<Category> getCategoriesByParentId(Long parentId, Visibility visibility)
     {
-        Query query = getEntityManager().createQuery("SELECT c from Category c LEFT JOIN FETCH c.defaultPhoto LEFT JOIN FETCH c.parentCategory " + (includePrivate ? "" : " WHERE c._private = :includePrivate "));
-        if (!includePrivate)
+        if (parentId == null)
         {
-            query.setParameter("includePrivate", includePrivate);
+            return getRootCategories(visibility);
         }
-        return (List<Category>) query.getResultList();
+        Query query = getEntityManager().createQuery("from Category where parentCategory = :parentId " + privateClause(visibility) + " order by description ");
+        query.setParameter("parentId", parentId);
+        return visible((List<Category>) query.getResultList(), visibility);
     }
 
-    public List<Category> getNewestCategories(int count, boolean includePrivate)
+    public Category getCategoryByCategoryId(Long categoryId, Visibility visibility)
     {
-        Query query = getEntityManager().createQuery("from Category " + (includePrivate ? "" : " where _private = :includePrivate") + " order by createdOn desc ");
-        if (!includePrivate)
+        Query query = getEntityManager().createQuery("from Category where categoryId " + (categoryId == null ? "IS NULL" : "= :categoryId ") + privateClause(visibility) + " order by description ");
+        if (categoryId != null)
         {
-            query.setParameter("includePrivate", includePrivate);
+            query.setParameter("categoryId", categoryId);
         }
-        List<Category> newestCategories = (List<Category>) query.getResultList();
+        // getSingleResult() throws when there is no row, which turned "you may not see this" into a 500
+        List<Category> results = (List<Category>) query.getResultList();
+        List<Category> visible = visible(results, visibility);
+        return visible.isEmpty() ? null : visible.get(0);
+    }
+
+    public List<Category> getRootCategories(Visibility visibility)
+    {
+        Query query = getEntityManager().createQuery("from Category where parentCategory is null " + privateClause(visibility) + "order by description ");
+        return visible((List<Category>) query.getResultList(), visibility);
+    }
+
+    public List<Category> getAllCategoriesAndDefaultPhotos(Visibility visibility)
+    {
+        Query query = getEntityManager().createQuery("SELECT c from Category c LEFT JOIN FETCH c.defaultPhoto LEFT JOIN FETCH c.parentCategory " + (visibility.isOwner() ? "" : " WHERE c._private = false "));
+        return visible((List<Category>) query.getResultList(), visibility);
+    }
+
+    public List<Category> getNewestCategories(int count, Visibility visibility)
+    {
+        Query query = getEntityManager().createQuery("from Category " + (visibility.isOwner() ? "" : " where _private = false ") + " order by createdOn desc ");
+        List<Category> newestCategories = visible((List<Category>) query.getResultList(), visibility);
 
         List<Category> result = new ArrayList<>();
-        long cutoffMillis = System.currentTimeMillis() - 1000 * 60 * 60 * 24 * 14;
+        long cutoffMillis = System.currentTimeMillis() - 1000L * 60 * 60 * 24 * 14;
         for (Category c : newestCategories)
         {
             if (result.size() < count || c.getCreatedOn().getTime() > cutoffMillis)
@@ -116,26 +280,54 @@ public class PhotoOperations
         return result;
     }
 
-    public Photo getPhoto(Long photoId, boolean includePrivate)
+    public Photo getPhoto(Long photoId, Visibility visibility)
     {
-        Query query = getEntityManager().createQuery("from Photo where photoId = :photoId " + (includePrivate ? "" : " and _private = :includePrivate"));
+        Query query = getEntityManager().createQuery("from Photo where photoId = :photoId");
         query.setParameter("photoId", photoId);
-        if (!includePrivate)
-        {
-            query.setParameter("includePrivate", includePrivate);
-        }
-        return (Photo) query.getSingleResult();
+        List<Photo> results = (List<Photo>) query.getResultList();
+        return results.isEmpty() ? null : visibleOrNull(results.get(0), visibility);
     }
 
-    public Photo getPhotoByFilename(String filename, boolean includePrivate)
+    public Photo getPhotoByFilename(String filename, Visibility visibility)
     {
-        Query query = getEntityManager().createQuery("from Photo where filename = :filename " + (includePrivate ? "" : " and _private = :includePrivate"));
+        Query query = getEntityManager().createQuery("from Photo where filename = :filename");
         query.setParameter("filename", filename);
-        if (!includePrivate)
+        List<Photo> results = (List<Photo>) query.getResultList();
+        return results.isEmpty() ? null : visibleOrNull(results.get(0), visibility);
+    }
+
+    /** The {@code _private} filter for a category query, as a JPQL fragment. The rest of the rule is {@link #visible}. */
+    private String privateClause(Visibility visibility)
+    {
+        return visibility.isOwner() ? "" : " and _private = false ";
+    }
+
+    /**
+     * Drops what this visitor may not see and stamps the rest with the visibility, so that each entity filters
+     * its own photos, sub-categories and tags the same way when Jackson serializes it.
+     */
+    private List<Category> visible(List<Category> categories, Visibility visibility)
+    {
+        List<Category> result = new ArrayList<>();
+        for (Category category : categories)
         {
-            query.setParameter("includePrivate", includePrivate);
+            if (visibility.canSee(category))
+            {
+                category.setVisibility(visibility);
+                result.add(category);
+            }
         }
-        return (Photo) query.getSingleResult();
+        return result;
+    }
+
+    private Photo visibleOrNull(Photo photo, Visibility visibility)
+    {
+        if (!visibility.canSee(photo))
+        {
+            return null;
+        }
+        photo.setVisibility(visibility);
+        return photo;
     }
 
     public Photo savePhoto(Photo photo)
@@ -247,7 +439,7 @@ public class PhotoOperations
      * selected category's full subtree of photos.
      */
     @Transactional(readOnly = true)
-    public List<Photo> getPhotosInAllCategories(List<Long> categoryIds, boolean includePrivate)
+    public List<Photo> getPhotosInAllCategories(List<Long> categoryIds, Visibility visibility)
     {
         if (categoryIds == null || categoryIds.isEmpty())
         {
@@ -255,21 +447,33 @@ public class PhotoOperations
         }
 
         // Build a parent -> children map from all visible categories so each selected category can be
-        // expanded into its full subtree (itself plus all descendants). When includePrivate is false the
+        // expanded into its full subtree (itself plus all descendants). For anyone but the owner the
         // private categories are excluded, so we never descend into private subtrees.
-        List<Category> allCategories = getAllCategories(includePrivate, false);
+        List<Category> allCategories = getAllCategories(visibility, false);
         java.util.Map<Integer, List<Integer>> childrenByParent = new java.util.HashMap<>();
+        java.util.Set<Integer> visibleIds = new java.util.HashSet<>();
         for (Category category : allCategories)
         {
             childrenByParent.computeIfAbsent(category.getParentCategoryId(), k -> new ArrayList<>()).add(category.getCategoryId());
+            visibleIds.add(category.getCategoryId());
         }
 
         java.util.Set<Integer> intersection = null;
         for (Long selectedId : categoryIds)
         {
+            // The selected category has to be visible in its own right, not merely reachable. Building
+            // childrenByParent from the visible categories stops us descending into a private subtree, but it
+            // does nothing about a private category named directly: it simply has no children in the map and
+            // gets expanded to itself. Without this check ?categories=<a person's category id> hands an
+            // anonymous caller that person's non-private photos - the People-tag membership that marking the
+            // category private is there to hide. This is an intersection, so an invisible member empties it.
+            if (selectedId == null || !visibleIds.contains(selectedId.intValue()))
+            {
+                return new ArrayList<>();
+            }
             java.util.Set<Integer> subtreeIds = new java.util.HashSet<>();
-            collectSubtreeIds(selectedId == null ? null : selectedId.intValue(), childrenByParent, subtreeIds);
-            java.util.Set<Integer> photoIds = getPhotoIdsInCategories(subtreeIds, includePrivate);
+            collectSubtreeIds(selectedId.intValue(), childrenByParent, subtreeIds);
+            java.util.Set<Integer> photoIds = getPhotoIdsInCategories(subtreeIds, visibility);
             if (intersection == null)
             {
                 intersection = photoIds;
@@ -286,7 +490,16 @@ public class PhotoOperations
 
         Query query = getEntityManager().createQuery("from Photo where photoId in :ids order by filename ");
         query.setParameter("ids", intersection);
-        return (List<Photo>) query.getResultList();
+        List<Photo> result = new ArrayList<>();
+        for (Photo photo : (List<Photo>) query.getResultList())
+        {
+            if (visibility.canSee(photo))
+            {
+                photo.setVisibility(visibility);
+                result.add(photo);
+            }
+        }
+        return result;
     }
 
     /**
@@ -305,7 +518,7 @@ public class PhotoOperations
 
         java.util.Map<Integer, List<Integer>> childrenByParent = new java.util.HashMap<>();
         java.util.Map<Integer, Category> categoriesById = new java.util.HashMap<>();
-        for (Category category : getAllCategories(true, false))
+        for (Category category : getAllCategories(Visibility.OWNER, false))
         {
             childrenByParent.computeIfAbsent(category.getParentCategoryId(), k -> new ArrayList<>()).add(category.getCategoryId());
             categoriesById.put(category.getCategoryId(), category);
@@ -364,18 +577,14 @@ public class PhotoOperations
         }
     }
 
-    private java.util.Set<Integer> getPhotoIdsInCategories(java.util.Set<Integer> categoryIds, boolean includePrivate)
+    private java.util.Set<Integer> getPhotoIdsInCategories(java.util.Set<Integer> categoryIds, Visibility visibility)
     {
         if (categoryIds.isEmpty())
         {
             return new java.util.HashSet<>();
         }
-        Query query = getEntityManager().createQuery("select distinct p.photoId from Photo p join p._categories c where c.categoryId in :categoryIds " + (includePrivate ? "" : " and p._private = :includePrivate"));
+        Query query = getEntityManager().createQuery("select distinct p.photoId from Photo p join p._categories c where c.categoryId in :categoryIds " + (visibility.isOwner() ? "" : " and p._private = false"));
         query.setParameter("categoryIds", categoryIds);
-        if (!includePrivate)
-        {
-            query.setParameter("includePrivate", includePrivate);
-        }
         return new java.util.HashSet<>((List<Integer>) query.getResultList());
     }
 
@@ -446,14 +655,10 @@ public class PhotoOperations
         return entityManager;
     }
 
-    public List<Category> getAllCategories(boolean includePrivate, boolean sortByDate)
+    public List<Category> getAllCategories(Visibility visibility, boolean sortByDate)
     {
-        Query query = getEntityManager().createQuery("from Category " + (includePrivate ? "" : " where _private = :includePrivate ") + "order by " + (sortByDate ? " categoryId" : " description"));
-        if (!includePrivate)
-        {
-            query.setParameter("includePrivate", includePrivate);
-        }
-        return (List<Category>) query.getResultList();
+        Query query = getEntityManager().createQuery("from Category " + (visibility.isOwner() ? "" : " where _private = false ") + "order by " + (sortByDate ? " categoryId" : " description"));
+        return visible((List<Category>) query.getResultList(), visibility);
     }
 
     @Transactional(readOnly = true)

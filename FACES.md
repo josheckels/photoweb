@@ -605,6 +605,19 @@ What this plan turned into, and where the code deviates from it.
   one-click "This is Bob" item each — no typing, no dialog. People already *confirmed* on another
   face in the same photo are filtered out by the one-person-per-photo rule; unconfirmed proposals
   are not, since they're guesses and correcting guesses is what this menu is for.
+- **The overlay is reachable from the keyboard: F2, then the arrow keys, then Enter.** Tagging a
+  new import is otherwise the one part of this screen that needs the mouse, in the middle of a run
+  that is otherwise F4 all the way through. F2 is bound on the window rather than the preview,
+  because the preview is the one component here that never had focus and the whole point is to get
+  there from the caption or the photo list; in the category tree it still means the tree's own
+  rename. The arrow keys pick the nearest face in that direction, counting sideways distance
+  double so that left and right follow a row of people, and left and right fall back to reading
+  order when nothing lies further out — otherwise a face could be unreachable. Enter opens the same
+  menu as a right-click, Escape hands focus back where it came from. The selection is held by face
+  id rather than by object so it survives the redraw that every face change triggers, and the ring
+  is painted by the label rather than into the image, which is where the coloured boxes are drawn —
+  an arrow key must not cost a JPEG decode and rescale. Moving to another photo while the preview
+  still has focus lands on that photo's first undecided face, so a run keeps going.
 - **Control rows in the People tab must use `WrapLayout`, not `FlowLayout`.** The tab lives in the
   narrow left column, and `BorderLayout.NORTH` grants only the preferred height — which
   `FlowLayout` reports as a single row even though it wraps when it lays out. The overflow gets

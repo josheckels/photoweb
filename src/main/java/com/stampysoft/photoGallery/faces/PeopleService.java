@@ -3,6 +3,7 @@ package com.stampysoft.photoGallery.faces;
 import com.stampysoft.photoGallery.Category;
 import com.stampysoft.photoGallery.Photo;
 import com.stampysoft.photoGallery.PhotoOperations;
+import com.stampysoft.photoGallery.Visibility;
 import com.stampysoft.photoGallery.admin.AdminFrame;
 import com.stampysoft.util.Configuration;
 import jakarta.persistence.EntityManager;
@@ -149,7 +150,7 @@ public class PeopleService
 
         Set<Integer> personIds = getPersonCategoryIds();
         List<Category> result = new ArrayList<>();
-        for (Category category : _photoOperations.getAllCategories(true, false))
+        for (Category category : _photoOperations.getAllCategories(Visibility.OWNER, false))
         {
             if (personIds.contains(category.getCategoryId()))
             {
@@ -173,7 +174,7 @@ public class PeopleService
             return new LinkedHashSet<>();
         }
 
-        List<Category> allCategories = _photoOperations.getAllCategories(true, false);
+        List<Category> allCategories = _photoOperations.getAllCategories(Visibility.OWNER, false);
         Map<Integer, List<Category>> childrenByParent = new HashMap<>();
         for (Category category : allCategories)
         {
@@ -239,6 +240,9 @@ public class PeopleService
         Category person = new Category();
         person.setDescription(name.trim());
         person.setParentCategory(peopleRoot);
+        // Inherited from the People root, the same as right-click Insert does, so a new person's tag is hidden
+        // from the public site from the moment they exist rather than from whenever it gets noticed. See PRIVACY.md.
+        person.setPrivate(peopleRoot.isPrivate());
         return _photoOperations.saveCategory(person);
     }
 
@@ -387,7 +391,7 @@ public class PeopleService
 
         // Move the photo tags over through the mapping rather than the join table directly: the join table is
         // owned by Photo, so removing the Category alone would leave orphaned link rows and trip the foreign key.
-        List<Photo> taggedPhotos = new ArrayList<>(managedFrom.getPhotos(true));
+        List<Photo> taggedPhotos = new ArrayList<>(managedFrom.getPhotos(Visibility.OWNER));
         for (Photo photo : taggedPhotos)
         {
             _photoOperations.updatePhotoCategories(photo, List.of(managedInto), List.of(managedFrom));

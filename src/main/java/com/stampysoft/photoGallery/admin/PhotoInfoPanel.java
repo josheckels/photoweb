@@ -29,7 +29,7 @@ import java.util.TreeSet;
 public class PhotoInfoPanel extends AbstractPanel
 {
 
-    private final JLabel _photoLabel = new JLabel();
+    private final PreviewLabel _photoLabel = new PreviewLabel();
     private final SpellCheckPane _captionTextArea = new SpellCheckPane(2);
     private final JCheckBox _privateCheckBox = new JCheckBox("Private");
     private final JCheckBox _showFacesCheckBox = new JCheckBox("Show faces", true);
@@ -58,6 +58,18 @@ public class PhotoInfoPanel extends AbstractPanel
 
     /** Whether the preview/form divider has been placed at a real window size yet. */
     private boolean _formHeightSet = false;
+
+    /**
+     * The face the keyboard is on, by id rather than by object, so that it survives the redraw that every face
+     * change triggers - the boxes are rebuilt from a fresh query each time.
+     */
+    private Long _selectedFaceId = null;
+
+    /** Where focus came from when F2 started face navigation, so Escape can hand it back. */
+    private Component _focusBeforeFaceNavigation = null;
+
+    /** Set when F2 had to switch the overlay on first: the selection is made once the boxes have been laid out. */
+    private boolean _selectFaceWhenLoaded = false;
 
     public PhotoInfoPanel()
     {
@@ -105,7 +117,8 @@ public class PhotoInfoPanel extends AbstractPanel
         JPanel flagsPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
         flagsPanel.add(_privateCheckBox);
         _showFacesCheckBox.setToolTipText("Outline detected faces on the preview. Click a face to name it, or " +
-                "right-click for the people already tagged on this photo.");
+                "right-click for the people already tagged on this photo. F2 starts stepping through the faces with " +
+                "the arrow keys, Enter opens the same menu, Escape stops.");
         flagsPanel.add(_showFacesCheckBox);
         flagsPanel.add(Box.createHorizontalStrut(12));
         _acceptFacesButton.setToolTipText("Confirms every proposed match on this photo at once - the amber names on " +
@@ -306,7 +319,7 @@ public class PhotoInfoPanel extends AbstractPanel
             }
         });
 
-        _acceptFacesButton.addActionListener(e -> acceptProposedFaces());
+        _acceptFacesButton.addActionListener(e -> saveAndAcceptProposedFaces());
 
         // The preview is rendered to fit the label, so now that the label can change size the image has to be built
         // again to match - otherwise dragging a divider just letterboxes the old one. Coalesced through a timer
@@ -340,6 +353,10 @@ public class PhotoInfoPanel extends AbstractPanel
                 PhotoFace face = findFaceAt(e.getPoint());
                 if (face != null)
                 {
+                    // Leaves the keyboard on whatever was clicked, so that arrowing on from a face named with the
+                    // mouse carries on from there rather than from wherever the keyboard had been left
+                    selectFace(face);
+                    _photoLabel.requestFocusInWindow();
                     assignFace(face);
                 }
             }
@@ -347,17 +364,17 @@ public class PhotoInfoPanel extends AbstractPanel
             @Override
             public void mousePressed(MouseEvent e)
             {
-                showFaceMenu(e);
+                maybeShowFaceMenu(e);
             }
 
             @Override
             public void mouseReleased(MouseEvent e)
             {
-                showFaceMenu(e);
+                maybeShowFaceMenu(e);
             }
 
             /** Which of press and release is the popup trigger is platform-specific, so both are checked. */
-            private void showFaceMenu(MouseEvent e)
+            private void maybeShowFaceMenu(MouseEvent e)
             {
                 if (!e.isPopupTrigger())
                 {
@@ -366,10 +383,14 @@ public class PhotoInfoPanel extends AbstractPanel
                 PhotoFace face = findFaceAt(e.getPoint());
                 if (face != null)
                 {
-                    buildFaceMenu(face).show(_photoLabel, e.getX(), e.getY());
+                    selectFace(face);
+                    _photoLabel.requestFocusInWindow();
+                    showFaceMenu(face, e.getX(), e.getY());
                 }
             }
         });
+
+        installFaceNavigationKeys(nextPhotoListener);
 
         AdminModel.getModel().addFaceListener(new FaceListener()
         {
@@ -392,15 +413,13 @@ public class PhotoInfoPanel extends AbstractPanel
      */
     private PhotoFace findFaceAt(java.awt.Point point)
     {
-        Icon icon = _photoLabel.getIcon();
-        if (icon == null || _faceBoxes.isEmpty())
+        Point origin = getImageOrigin();
+        if (origin == null || _faceBoxes.isEmpty())
         {
             return null;
         }
-        int offsetX = (_photoLabel.getWidth() - icon.getIconWidth()) / 2;
-        int offsetY = (_photoLabel.getHeight() - icon.getIconHeight()) / 2;
-        int imageX = point.x - offsetX;
-        int imageY = point.y - offsetY;
+        int imageX = point.x - origin.x;
+        int imageY = point.y - origin.y;
 
         for (FaceBox box : _faceBoxes)
         {
@@ -410,6 +429,361 @@ public class PhotoInfoPanel extends AbstractPanel
             }
         }
         return null;
+    }
+
+    /**
+     * Where the top left of the displayed image sits in the label, or null if there's no image. Face boxes are in
+     * image coordinates, so everything that turns one into a point on screen - hit testing and the selection ring -
+     * goes through here.
+     */
+    private Point getImageOrigin()
+    {
+        Icon icon = _photoLabel.getIcon();
+        if (icon == null)
+        {
+            return null;
+        }
+        return new Point((_photoLabel.getWidth() - icon.getIconWidth()) / 2,
+                (_photoLabel.getHeight() - icon.getIconHeight()) / 2);
+    }
+
+    /**
+     * Binds the keyboard onto the face overlay: F2 anywhere in the window starts, the arrow keys move between faces,
+     * and Enter opens the menu that used to need a right-click.
+     * <p>
+     * F2 is bound on the window rather than on the preview because the preview is the one thing on this screen that
+     * never had focus - the point of the keystroke is to get there from the caption, the category list or the photo
+     * list without reaching for the mouse.
+     */
+    private void installFaceNavigationKeys(KeyListener nextPhotoListener)
+    {
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_F2, 0), "navigateFaces");
+        getActionMap().put("navigateFaces", new AbstractAction()
+        {
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                beginFaceNavigation();
+            }
+        });
+
+        _photoLabel.setFocusable(true);
+        // So that a run of photos can still be worked through - F4 saves and moves on - without leaving the overlay
+        _photoLabel.addKeyListener(nextPhotoListener);
+        // The ring is drawn solid or dashed depending on where focus is, so it has to be redrawn when that changes
+        _photoLabel.addFocusListener(new FocusAdapter()
+        {
+            @Override
+            public void focusGained(FocusEvent e)
+            {
+                // The preview is in the tab cycle now that it takes focus, and a focused preview with nothing
+                // ringed would look like nothing had happened, so arriving here always lands on a face
+                if (findSelectedBox() == null)
+                {
+                    selectFace(chooseStartingFace());
+                }
+                _photoLabel.repaint();
+            }
+
+            @Override
+            public void focusLost(FocusEvent e)
+            {
+                _photoLabel.repaint();
+            }
+        });
+
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_LEFT, 0), "faceLeft", () -> moveSelection(KeyEvent.VK_LEFT));
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_RIGHT, 0), "faceRight", () -> moveSelection(KeyEvent.VK_RIGHT));
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "faceUp", () -> moveSelection(KeyEvent.VK_UP));
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "faceDown", () -> moveSelection(KeyEvent.VK_DOWN));
+
+        // Enter and Space are what a list would do; the other two are the platform's own context-menu keystrokes
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "faceMenu", this::showMenuForSelectedFace);
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "faceMenuSpace", this::showMenuForSelectedFace);
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_CONTEXT_MENU, 0), "faceMenuKey", this::showMenuForSelectedFace);
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_F10, InputEvent.SHIFT_DOWN_MASK), "faceMenuShiftF10",
+                this::showMenuForSelectedFace);
+
+        bindFaceKey(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "endFaceNavigation", this::endFaceNavigation);
+    }
+
+    private void bindFaceKey(KeyStroke keyStroke, String name, Runnable action)
+    {
+        _photoLabel.getInputMap(JComponent.WHEN_FOCUSED).put(keyStroke, name);
+        _photoLabel.getActionMap().put(name, new AbstractAction()
+        {
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                action.run();
+            }
+        });
+    }
+
+    /**
+     * Moves the keyboard onto the preview and picks a face to start from.
+     * <p>
+     * Switching the overlay on is part of the keystroke rather than a precondition for it: asking for the faces with
+     * them hidden means the same thing as asking to see them, and the selection is made once the redraw lands.
+     */
+    private void beginFaceNavigation()
+    {
+        if (_displayedPhoto == null)
+        {
+            return;
+        }
+        if (!_photoLabel.isFocusOwner())
+        {
+            _focusBeforeFaceNavigation = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        }
+
+        if (!_showFacesCheckBox.isSelected())
+        {
+            _selectFaceWhenLoaded = true;
+            _showFacesCheckBox.setSelected(true);
+            showThumbnail(_displayedPhoto);
+            return;
+        }
+
+        if (_faceBoxes.isEmpty())
+        {
+            Toolkit.getDefaultToolkit().beep();
+            return;
+        }
+        _photoLabel.requestFocusInWindow();
+        if (findSelectedBox() == null)
+        {
+            selectFace(chooseStartingFace());
+        }
+        else
+        {
+            _photoLabel.repaint();
+        }
+    }
+
+    /** Gives focus back to whatever the F2 was pressed from, and takes the ring off the preview. */
+    private void endFaceNavigation()
+    {
+        _selectedFaceId = null;
+        _photoLabel.repaint();
+        Component previous = _focusBeforeFaceNavigation;
+        _focusBeforeFaceNavigation = null;
+        if (previous != null && previous.isShowing())
+        {
+            previous.requestFocusInWindow();
+        }
+    }
+
+    /**
+     * The face to land on when navigation starts: the first one that still needs a decision, in reading order,
+     * falling back to the first face on the photo.
+     * <p>
+     * Confirmed and ignored faces are already settled, so starting on one would mean arrowing past it every time.
+     */
+    private PhotoFace chooseStartingFace()
+    {
+        java.util.List<FaceBox> ordered = inReadingOrder();
+        for (FaceBox box : ordered)
+        {
+            PhotoFace face = box.face();
+            if (!face.isIgnored() && !face.isConfirmed())
+            {
+                return face;
+            }
+        }
+        return ordered.isEmpty() ? null : ordered.get(0).face();
+    }
+
+    /** Puts the keyboard on this face and draws it as selected. Pass null to clear. */
+    private void selectFace(PhotoFace face)
+    {
+        _selectedFaceId = face == null ? null : face.getFaceId();
+        _photoLabel.repaint();
+    }
+
+    /** The box for the selected face in the current layout, or null if there isn't one any more. */
+    private FaceBox findSelectedBox()
+    {
+        if (_selectedFaceId == null)
+        {
+            return null;
+        }
+        for (FaceBox box : _faceBoxes)
+        {
+            if (_selectedFaceId.equals(box.face().getFaceId()))
+            {
+                return box;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Puts the keyboard back on the right face once a redraw has replaced the boxes.
+     * <p>
+     * Every face change redraws the preview, so without this, naming a face would drop the selection and the next
+     * arrow key would start over. Moving to another photo while the preview has focus lands on that photo's first
+     * undecided face, so that a run of photos can be worked through without pressing F2 again each time.
+     */
+    private void restoreFaceSelection()
+    {
+        boolean startRequested = _selectFaceWhenLoaded;
+        _selectFaceWhenLoaded = false;
+
+        if (findSelectedBox() == null)
+        {
+            _selectedFaceId = null;
+            if (startRequested || _photoLabel.isFocusOwner())
+            {
+                PhotoFace face = chooseStartingFace();
+                _selectedFaceId = face == null ? null : face.getFaceId();
+            }
+        }
+        if (startRequested)
+        {
+            if (_faceBoxes.isEmpty())
+            {
+                Toolkit.getDefaultToolkit().beep();
+            }
+            else
+            {
+                _photoLabel.requestFocusInWindow();
+            }
+        }
+        _photoLabel.repaint();
+    }
+
+    /**
+     * Moves the selection to the nearest face in the direction pressed.
+     * <p>
+     * Nearest is measured from box centre to box centre, with sideways distance counted double, so that left and
+     * right prefer the next face along a row of people rather than one that happens to be a little closer but well
+     * above or below. Left and right fall back to the next face in reading order when there's nothing further out in
+     * that direction, which is what makes every face reachable however they're arranged.
+     */
+    private void moveSelection(int keyCode)
+    {
+        if (_faceBoxes.isEmpty())
+        {
+            return;
+        }
+        FaceBox from = findSelectedBox();
+        if (from == null)
+        {
+            selectFace(chooseStartingFace());
+            return;
+        }
+
+        Point origin = centreOf(from);
+        FaceBox best = null;
+        long bestScore = Long.MAX_VALUE;
+        for (FaceBox box : _faceBoxes)
+        {
+            if (box == from)
+            {
+                continue;
+            }
+            Point candidate = centreOf(box);
+            long alongAxis;
+            long acrossAxis;
+            switch (keyCode)
+            {
+                case KeyEvent.VK_LEFT -> { alongAxis = origin.x - candidate.x; acrossAxis = Math.abs(candidate.y - origin.y); }
+                case KeyEvent.VK_RIGHT -> { alongAxis = candidate.x - origin.x; acrossAxis = Math.abs(candidate.y - origin.y); }
+                case KeyEvent.VK_UP -> { alongAxis = origin.y - candidate.y; acrossAxis = Math.abs(candidate.x - origin.x); }
+                default -> { alongAxis = candidate.y - origin.y; acrossAxis = Math.abs(candidate.x - origin.x); }
+            }
+            if (alongAxis <= 0)
+            {
+                continue;
+            }
+            long score = alongAxis + 2 * acrossAxis;
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = box;
+            }
+        }
+
+        if (best == null && (keyCode == KeyEvent.VK_LEFT || keyCode == KeyEvent.VK_RIGHT))
+        {
+            best = stepInReadingOrder(from, keyCode == KeyEvent.VK_RIGHT ? 1 : -1);
+        }
+        if (best != null)
+        {
+            selectFace(best.face());
+        }
+    }
+
+    /** The face one place along in reading order, wrapping round at the ends. */
+    private FaceBox stepInReadingOrder(FaceBox from, int step)
+    {
+        java.util.List<FaceBox> ordered = inReadingOrder();
+        int index = ordered.indexOf(from);
+        if (index < 0)
+        {
+            return null;
+        }
+        int next = (index + step + ordered.size()) % ordered.size();
+        return ordered.get(next);
+    }
+
+    /** The faces sorted top to bottom, then left to right. */
+    private java.util.List<FaceBox> inReadingOrder()
+    {
+        java.util.List<FaceBox> ordered = new java.util.ArrayList<>(_faceBoxes);
+        ordered.sort(java.util.Comparator.<FaceBox>comparingInt(box -> centreOf(box).y)
+                .thenComparingInt(box -> centreOf(box).x));
+        return ordered;
+    }
+
+    private static Point centreOf(FaceBox box)
+    {
+        Rectangle bounds = box.bounds();
+        return new Point(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    }
+
+    /** Opens the face menu on the selected face - the keyboard's way in to what right-clicking offers. */
+    private void showMenuForSelectedFace()
+    {
+        FaceBox box = findSelectedBox();
+        Point origin = getImageOrigin();
+        if (box == null || origin == null)
+        {
+            return;
+        }
+        // Just below the box, where a menu opened by a right-click inside it would have appeared
+        showFaceMenu(box.face(), origin.x + box.bounds().x, origin.y + box.bounds().y + box.bounds().height);
+    }
+
+    /**
+     * Shows the face menu at a point in the label, from a click or from the keyboard.
+     * <p>
+     * The popup takes focus while it's up, so it's handed back to the preview afterwards - otherwise choosing an
+     * item with the keyboard would end face navigation as a side effect of using it.
+     */
+    private void showFaceMenu(PhotoFace face, int x, int y)
+    {
+        JPopupMenu menu = buildFaceMenu(face);
+        menu.addPopupMenuListener(new javax.swing.event.PopupMenuListener()
+        {
+            @Override
+            public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e)
+            {
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e)
+            {
+                SwingUtilities.invokeLater(() -> _photoLabel.requestFocusInWindow());
+            }
+
+            @Override
+            public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e)
+            {
+            }
+        });
+        menu.show(_photoLabel, x, y);
     }
 
     /**
@@ -430,6 +804,12 @@ public class PhotoInfoPanel extends AbstractPanel
     private void showThumbnail(final Photo photo)
     {
         final int generation = ++_thumbnailGeneration;
+        if (photo == null || !photo.equals(_displayedPhoto))
+        {
+            // A different photo, so the face the keyboard was on has gone with it. The same photo redrawn - after a
+            // resize, or after a face was named - keeps the selection, which is re-resolved once the boxes are back.
+            _selectedFaceId = null;
+        }
         _displayedPhoto = photo;
         _faceBoxes = java.util.List.of();
         setProposedFaces(java.util.List.of());
@@ -487,6 +867,7 @@ public class PhotoInfoPanel extends AbstractPanel
                     _photoLabel.setIcon(icon);
                     _faceBoxes = loadedBoxes;
                     setProposedFaces(proposals);
+                    restoreFaceSelection();
                 }
             });
         };
@@ -539,24 +920,28 @@ public class PhotoInfoPanel extends AbstractPanel
     }
 
     /**
-     * Confirms every proposal on the displayed photo in one go, each as whoever it was proposed as.
+     * Saves the pending edits, then confirms every proposal on the displayed photo in one go, each as whoever it was
+     * proposed as.
      * <p>
      * A photo's worth of matches is the natural unit to accept: propagation allows one person per photo, so the
      * proposals here are for different people who were all at the same moment, and the evidence for all of them is
      * the overlay directly above the button. What it saves is a right-click and a menu item per face.
+     * <p>
+     * Saving is part of the same call so that F4 - save and move on - can accept as it goes without saving twice.
      */
-    private void acceptProposedFaces()
+    void saveAndAcceptProposedFaces()
     {
         java.util.List<PhotoFace> proposals = _proposedFaces;
         Photo photo = _displayedPhoto;
+
+        // Confirming tags the photo, so flush whatever's pending in this panel first rather than having the
+        // category list reloaded out from under unsaved edits.
+        saveCurrentPhoto();
         if (proposals.isEmpty() || photo == null)
         {
             return;
         }
 
-        // Confirming tags the photo, so flush whatever's pending in this panel first rather than having the
-        // category list reloaded out from under unsaved edits.
-        saveCurrentPhoto();
         AdminFrame.getFrame().getPeopleService().assignProposedFaces(proposals);
 
         java.util.List<Category> people = new java.util.ArrayList<>();
@@ -670,23 +1055,19 @@ public class PhotoInfoPanel extends AbstractPanel
             return;
         }
 
-        JComboBox<String> combo = FaceNameCombo.create(peopleService.getAllPeople());
+        FaceNameCombo combo = new FaceNameCombo(peopleService.getAllPeople());
         if (face.getPersonCategory() != null)
         {
-            combo.setSelectedItem(face.getPersonCategory().getDescription());
+            combo.setTypedName(face.getPersonCategory().getDescription());
         }
 
-        JPanel panel = new JPanel(new BorderLayout(0, 6));
-        panel.add(new JLabel("Who is this?"), BorderLayout.NORTH);
-        panel.add(combo, BorderLayout.CENTER);
-
-        if (JOptionPane.showConfirmDialog(this, panel, "Assign face", JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION)
+        String name = combo.showDialog(this, "Assign face", "Who is this?");
+        if (name == null)
         {
             return;
         }
 
-        Category person = FaceNameCombo.resolvePerson(FaceNameCombo.getTypedName(combo), peopleService, this);
+        Category person = FaceNameCombo.resolvePerson(name, peopleService, this);
         if (person == null)
         {
             return;
@@ -916,6 +1297,56 @@ public class PhotoInfoPanel extends AbstractPanel
     /** A face and where it was drawn, so a click on the preview can be resolved back to it. */
     private record FaceBox(PhotoFace face, Rectangle bounds)
     {
+    }
+
+    /**
+     * The preview, with the keyboard's selection ring drawn over the top of the photo.
+     * <p>
+     * The coloured outlines are painted into the image itself, on the background thread that scales it, because
+     * they only change when the faces do. The ring is painted here instead: it moves with every arrow key, and
+     * re-rendering the preview for that would mean decoding and rescaling a JPEG per keystroke.
+     */
+    private class PreviewLabel extends JLabel
+    {
+        @Override
+        protected void paintComponent(Graphics g)
+        {
+            super.paintComponent(g);
+
+            FaceBox box = findSelectedBox();
+            Point origin = getImageOrigin();
+            if (box == null || origin == null)
+            {
+                return;
+            }
+
+            Graphics2D graphics = (Graphics2D) g.create();
+            try
+            {
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                Rectangle bounds = box.bounds();
+                // Outside the face's own outline, so that the colour saying who this is stays readable
+                int x = origin.x + bounds.x - 3;
+                int y = origin.y + bounds.y - 3;
+                int width = bounds.width + 6;
+                int height = bounds.height + 6;
+
+                boolean focused = isFocusOwner();
+                // Dark underneath, light on top: a plain white ring disappears against a bright photo
+                graphics.setStroke(new BasicStroke(focused ? 4f : 3f));
+                graphics.setColor(new Color(0, 0, 0, 130));
+                graphics.drawRect(x, y, width, height);
+                graphics.setStroke(focused
+                        ? new BasicStroke(2f)
+                        : new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 4f}, 0f));
+                graphics.setColor(Color.WHITE);
+                graphics.drawRect(x, y, width, height);
+            }
+            finally
+            {
+                graphics.dispose();
+            }
+        }
     }
 
     public void saveCurrentPhoto()

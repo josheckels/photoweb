@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.stampysoft.photoGallery.Photo;
 import com.stampysoft.photoGallery.PhotoOperations;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -28,16 +29,14 @@ public class PhotosController extends AbstractController {
     @GetMapping(produces = {MediaType.APPLICATION_JSON_VALUE}, value = "/api/photos")
     public ResponseEntity<?> getPhotos(
             HttpServletRequest request,
-            @RequestParam(value = "categories", required = false) List<Long> categoryIds,
-            @RequestParam(value = "private", required = false) Boolean includePrivate) throws JsonProcessingException {
-
-        boolean privateSetting = includePrivate(includePrivate, request);
+            HttpServletResponse res,
+            @RequestParam(value = "categories", required = false) List<Long> categoryIds) throws JsonProcessingException {
 
         if (categoryIds == null || categoryIds.isEmpty()) {
             return ResponseEntity.ok(objectMapper.writeValueAsString(Collections.emptyList()));
         }
 
-        List<Photo> photos = photoOperations.getPhotosInAllCategories(categoryIds, privateSetting);
+        List<Photo> photos = photoOperations.getPhotosInAllCategories(categoryIds, visibility(request, res, photoOperations));
         return ResponseEntity.ok(objectMapper.writeValueAsString(photos));
     }
 }

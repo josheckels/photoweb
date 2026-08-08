@@ -33,8 +33,6 @@ public class CategoryRssController extends AbstractController {
             HttpServletResponse response,
             @RequestParam(value = "type", required = false) String feedType) throws IOException {
 
-        boolean privateSetting = includePrivate(null, request);
-        
         try {
             SyndFeed feed = new SyndFeedImpl();
 
@@ -44,7 +42,7 @@ public class CategoryRssController extends AbstractController {
 
             List<SyndEntry> entries = new ArrayList<>();
 
-            List<Category> newestCategories = photoOperations.getNewestCategories(8, privateSetting);
+            List<Category> newestCategories = photoOperations.getNewestCategories(8, visibility(request, response, photoOperations));
             for (Category category : newestCategories) {
                 SyndEntry entry = new SyndEntryImpl();
 

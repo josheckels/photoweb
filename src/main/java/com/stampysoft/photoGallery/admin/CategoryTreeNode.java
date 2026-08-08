@@ -7,6 +7,7 @@
 package com.stampysoft.photoGallery.admin;
 
 import com.stampysoft.photoGallery.Category;
+import com.stampysoft.photoGallery.Visibility;
 import com.stampysoft.photoGallery.CategoryNotFoundException;
 import com.stampysoft.util.IteratorBackedEnumeration;
 import com.stampysoft.util.SystemException;
@@ -42,7 +43,7 @@ public class CategoryTreeNode implements MutableTreeNode
             Collection<Category> categories;
             if (_category == null)
             {
-                categories = AdminFrame.getFrame().getPhotoOperations().getRootCategories(true);
+                categories = AdminFrame.getFrame().getPhotoOperations().getRootCategories(Visibility.OWNER);
             }
             else
             {
@@ -135,6 +136,19 @@ public class CategoryTreeNode implements MutableTreeNode
     public void setPrivate(boolean b)
     {
         _category.setPrivate(b);
+        AdminModel.getModel().saveCategory(_category);
+    }
+
+    /** See PRIVACY.md: hides every photo tagged with this person from anonymous visitors, not the category itself. */
+    public void setOptOut(boolean b)
+    {
+        _category.setOptOut(b);
+        AdminModel.getModel().saveCategory(_category);
+    }
+
+    public void setShareToken(String shareToken)
+    {
+        _category.setShareToken(shareToken);
         AdminModel.getModel().saveCategory(_category);
     }
 

@@ -3,6 +3,7 @@ package com.stampysoft.photoGallery.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.stampysoft.photoGallery.Category;
 import com.stampysoft.photoGallery.PhotoOperations;
+import com.stampysoft.photoGallery.Visibility;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,19 +34,18 @@ public class CategoryController extends AbstractController {
     public ResponseEntity<?> getCategories(
             HttpServletRequest request,
             HttpServletResponse res,
-            @RequestParam(value = "private", required = false) Boolean includePrivate,
             @PathVariable(value = "categoryId", required = false) Long categoryId) throws JsonProcessingException {
 
-        boolean privateSetting = includePrivate(includePrivate, request);
+        Visibility visibility = visibility(request, res, photoOperations);
 
         if (categoryId != null) {
-            Category category = photoOperations.getCategoryByCategoryId(categoryId, privateSetting);
+            Category category = photoOperations.getCategoryByCategoryId(categoryId, visibility);
             if (category == null) {
                 return ResponseEntity.notFound().build();
             }
             return ResponseEntity.ok(objectMapper.writeValueAsString(category));
         } else {
-            List<Category> categories = photoOperations.getRootCategories(privateSetting);
+            List<Category> categories = photoOperations.getRootCategories(visibility);
             return ResponseEntity.ok(objectMapper.writeValueAsString(categories));
         }
     }

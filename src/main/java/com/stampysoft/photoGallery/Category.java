@@ -36,8 +36,28 @@ public class Category extends BaseCategory implements Comparable<Category>
     private Photo defaultPhoto;
     @OneToMany(mappedBy = "parentCategory")
     private Set<Category> childCategories;
+
+    /**
+     * Only meaningful on a person's category (a descendant of {@code PeopleCategoryId}): this person has asked
+     * not to appear publicly, so every photo tagged with them is withheld from anonymous visitors. It hides
+     * photos, never the category itself - see {@link Visibility}.
+     */
+    @Column(name = "public_opt_out")
+    private boolean _optOut;
+
+    /**
+     * The secret in this category's share link, or null if it isn't shared. One per category: regenerating it
+     * is what revokes a link that has been sent out too widely.
+     */
+    @Column(name = "share_token", length = 43)
+    private String _shareToken;
+
+    /**
+     * Who is asking, for the duration of the request being serialized. Defaults to {@link Visibility#NONE} so
+     * that a path which forgets to set it renders empty rather than unfiltered.
+     */
     @Transient
-    private boolean includePrivate;
+    private Visibility _visibility = Visibility.NONE;
 
     public Category()
     {
@@ -82,10 +102,17 @@ public class Category extends BaseCategory implements Comparable<Category>
         this.photos = photos;
     }
 
-    @JsonProperty
-    public Set<Photo> getPhotos()
+    @JsonProperty("photos")
+    public Set<Photo> getVisiblePhotos()
     {
-        return getPhotos(includePrivate);
+        Set<Photo> result = getPhotos(_visibility);
+        for (Photo photo : result)
+        {
+            // So that each photo's own tags are filtered by the same rule when it is serialized in turn.
+            // The owner needs this as much as anyone: without it their photos would serialize no tags at all.
+            photo.setVisibility(_visibility);
+        }
+        return result;
     }
 
     public String toString()
@@ -130,9 +157,27 @@ public class Category extends BaseCategory implements Comparable<Category>
         return 0;
     }
 
-    @JsonGetter
+    /**
+     * The cover photo as stored, whether or not the current visitor is allowed to see it. This is what the admin
+     * UI wants; JSON goes through {@link #getVisibleDefaultPhoto()} instead.
+     */
     public Photo getDefaultPhoto()
     {
+        return defaultPhoto;
+    }
+
+    /**
+     * The cover photo, or null when the visitor can't see it - a category whose cover happens to be a photo of
+     * somebody who opted out renders without one rather than disappearing.
+     */
+    @JsonGetter("defaultPhoto")
+    public Photo getVisibleDefaultPhoto()
+    {
+        if (!_visibility.canSee(defaultPhoto))
+        {
+            return null;
+        }
+        defaultPhoto.setVisibility(_visibility);
         return defaultPhoto;
     }
 
@@ -141,16 +186,16 @@ public class Category extends BaseCategory implements Comparable<Category>
         this.defaultPhoto = defaultPhoto;
     }
 
-    public Set<Photo> getPhotos(boolean includePrivate)
+    public Set<Photo> getPhotos(Visibility visibility)
     {
-        if (includePrivate)
+        if (visibility.isOwner())
         {
             return photos;
         }
         Set<Photo> result = new LinkedHashSet<>();
         for (Photo photo : photos)
         {
-            if (!photo.isPrivate())
+            if (visibility.canSee(photo))
             {
                 result.add(photo);
             }
@@ -163,12 +208,21 @@ public class Category extends BaseCategory implements Comparable<Category>
         this.childCategories = childCategories;
     }
 
+    /**
+     * The child categories the visitor is allowed to know about. This used to list every child regardless of the
+     * private flag, which meant a private sub-category's name and cover photo were served to anyone who asked for
+     * its parent.
+     */
     @JsonGetter("subcategories")
     public List<Map<String, Object>> getCategoriesNonRecursive()
     {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Category category : getChildCategories()) {
-            result.add(category.toNonRecursiveMap());
+            if (_visibility.canSee(category))
+            {
+                category.setVisibility(_visibility);
+                result.add(category.toNonRecursiveMap());
+            }
         }
         return result;
     }
@@ -182,11 +236,35 @@ public class Category extends BaseCategory implements Comparable<Category>
         Map<String, Object> result = new HashMap<>();
         result.put("id", getCategoryId());
         result.put("description", getDescription());
-        result.put("defaultPhoto", getDefaultPhoto());
+        result.put("defaultPhoto", getVisibleDefaultPhoto());
         return result;
     }
 
-    public void setIncludePrivate(boolean includePrivate) {
-        this.includePrivate = includePrivate;
+    public boolean isOptOut()
+    {
+        return _optOut;
+    }
+
+    public void setOptOut(boolean optOut)
+    {
+        _optOut = optOut;
+    }
+
+    public String getShareToken()
+    {
+        return _shareToken;
+    }
+
+    public void setShareToken(String shareToken)
+    {
+        _shareToken = shareToken;
+    }
+
+    public Visibility getVisibility() {
+        return _visibility;
+    }
+
+    public void setVisibility(Visibility visibility) {
+        _visibility = visibility == null ? Visibility.NONE : visibility;
     }
 }

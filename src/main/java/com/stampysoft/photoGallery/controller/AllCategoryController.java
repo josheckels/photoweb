@@ -29,12 +29,9 @@ public class AllCategoryController extends AbstractController {
 
     public ResponseEntity<?> getCategories(
             HttpServletRequest request,
-            HttpServletResponse res,
-            @RequestParam(value = "private", required = false) Boolean includePrivate) throws JsonProcessingException {
+            HttpServletResponse res) throws JsonProcessingException {
 
-        boolean privateSetting = includePrivate(includePrivate, request);
-
-        List<Category> categories = photoOperations.getAllCategoriesAndDefaultPhotos(privateSetting);
+        List<Category> categories = photoOperations.getAllCategoriesAndDefaultPhotos(visibility(request, res, photoOperations));
         Map<Integer, Category> categoryMap = new HashMap<>();
         for (Category c : categories)
         {

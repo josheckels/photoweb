@@ -28,7 +28,21 @@ CREATE TABLE category (
 	description          VARCHAR( 255 ),
 	created_on           DATE            NOT NULL,
 	default_photo_id     BIGINT          NULL,
-	private              BOOLEAN         NOT NULL 
+	private              BOOLEAN         NOT NULL,
+	-- Only meaningful on a person's category: hides every photo tagged with them from anonymous visitors.
+	-- See PRIVACY.md.
+	public_opt_out       BOOLEAN         NOT NULL DEFAULT FALSE,
+	-- The secret in this category's share link, or NULL if it isn't shared. VARCHAR rather than CHAR: the
+	-- entity maps it as a String, and ddl-auto=validate rejects bpchar for one of those.
+	share_token          VARCHAR( 43 )   NULL
+);
+
+CREATE UNIQUE INDEX category_share_token_idx ON category (share_token);
+
+-- Installation-wide settings. Currently just 'owner.token', the owner's all-access secret. See PRIVACY.md.
+CREATE TABLE app_setting (
+	setting_name         VARCHAR( 64 )   PRIMARY KEY,
+	setting_value        VARCHAR( 255 )
 );
 
 ALTER TABLE category ADD CONSTRAINT category_parent_pk FOREIGN KEY ( parent_category_id )
@@ -101,7 +115,7 @@ CREATE INDEX IF NOT EXISTS photo_face_embedding_idx ON photo_face USING hnsw (em
 
 -- Prevents rejected matches from being re-proposed on every propagation round.
 CREATE TABLE IF NOT EXISTS face_person_rejection (
-                                                     face_id     BIGINT NOT NULL REFERENCES photo_face(face_id)   ON DELETE CASCADE,
+    face_id     BIGINT NOT NULL REFERENCES photo_face(face_id)   ON DELETE CASCADE,
     category_id INT    NOT NULL REFERENCES category(category_id) ON DELETE CASCADE,
     PRIMARY KEY (face_id, category_id)
     );

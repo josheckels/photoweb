@@ -94,7 +94,7 @@ public class PeoplePanel extends JPanel
     private final JList<ClusterSummary> _clustersList = new JList<>(_clustersModel);
     private final DefaultListModel<PhotoFace> _clusterFacesModel = new DefaultListModel<>();
     private final JList<PhotoFace> _clusterFacesList = new JList<>(_clusterFacesModel);
-    private final JComboBox<String> _clusterNameCombo = new JComboBox<>();
+    private final FaceNameCombo _clusterNameCombo = new FaceNameCombo();
     private final JButton _assignClusterButton = new JButton("This is...");
     private final JButton _ignoreClusterButton = new JButton("Nobody");
 
@@ -239,9 +239,8 @@ public class PeoplePanel extends JPanel
 
         // Editable and autocompleting on purpose: an "unknown" cluster is very often somebody who already has a
         // category but had no seeds, and picking them from the list merges instead of creating a duplicate.
-        _clusterNameCombo.setEditable(true);
-        _clusterNameCombo.setPreferredSize(new Dimension(200, _clusterNameCombo.getPreferredSize().height));
-        FaceNameCombo.installAutoComplete(_clusterNameCombo);
+        JComboBox<String> clusterNameField = _clusterNameCombo.getComponent();
+        clusterNameField.setPreferredSize(new Dimension(200, clusterNameField.getPreferredSize().height));
 
         _ignoreClusterButton.setToolTipText("Nobody at all - a poster, a stranger in the background, or a bad " +
                 "detection. Every face in this cluster stops being proposed as anyone.");
@@ -249,7 +248,7 @@ public class PeoplePanel extends JPanel
         JPanel namePanel = new JPanel();
         WrapLayout.install(namePanel, 4, 2);
         namePanel.add(new JLabel("Name: "));
-        namePanel.add(_clusterNameCombo);
+        namePanel.add(clusterNameField);
         namePanel.add(_assignClusterButton);
         namePanel.add(_ignoreClusterButton);
 
@@ -766,17 +765,14 @@ public class PeoplePanel extends JPanel
             return;
         }
 
-        JComboBox<String> combo = FaceNameCombo.create(new ArrayList<>(_peopleById.values()));
-        JPanel panel = new JPanel(new BorderLayout(0, 6));
-        panel.add(new JLabel("Who are these " + selected.size() + " face(s)?"), BorderLayout.NORTH);
-        panel.add(combo, BorderLayout.CENTER);
-
-        if (JOptionPane.showConfirmDialog(this, panel, "Assign to someone else", JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION)
+        FaceNameCombo combo = new FaceNameCombo(_peopleById.values());
+        String name = combo.showDialog(this, "Assign to someone else",
+                "Who are these " + selected.size() + " face(s)?");
+        if (name == null)
         {
             return;
         }
-        Category person = FaceNameCombo.resolvePerson(FaceNameCombo.getTypedName(combo), _peopleService, this);
+        Category person = FaceNameCombo.resolvePerson(name, _peopleService, this);
         if (person == null)
         {
             return;
@@ -951,7 +947,7 @@ public class PeoplePanel extends JPanel
         {
             _clusterFacesModel.addElement(face);
         }
-        _clusterNameCombo.setSelectedItem("");
+        _clusterNameCombo.setTypedName("");
     }
 
     /**
@@ -968,7 +964,7 @@ public class PeoplePanel extends JPanel
         {
             return;
         }
-        String name = FaceNameCombo.getTypedName(_clusterNameCombo);
+        String name = _clusterNameCombo.getTypedName();
         Category person = FaceNameCombo.resolvePerson(name, _peopleService, this);
         if (person == null)
         {
@@ -1269,12 +1265,7 @@ public class PeoplePanel extends JPanel
 
         // Keep the People categories available as autocomplete targets, since most "unknown" clusters are somebody
         // who already exists.
-        _clusterNameCombo.removeAllItems();
-        for (Category person : _peopleById.values())
-        {
-            _clusterNameCombo.addItem(person.getDescription());
-        }
-        _clusterNameCombo.setSelectedItem("");
+        _clusterNameCombo.setPeople(_peopleById.values());
 
         if (previous != null)
         {

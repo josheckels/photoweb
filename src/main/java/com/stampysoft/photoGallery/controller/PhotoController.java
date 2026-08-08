@@ -32,9 +32,7 @@ public class PhotoController extends AbstractController {
             HttpServletResponse res,
             @PathVariable(value = "photoId") long photoId) throws JsonProcessingException {
 
-        boolean privateSetting = includePrivate(null, request);
-
-        Photo photo = photoOperations.getPhoto(photoId, privateSetting);
+        Photo photo = photoOperations.getPhoto(photoId, visibility(request, res, photoOperations));
         if (photo == null) {
             return ResponseEntity.notFound().build();
         }
