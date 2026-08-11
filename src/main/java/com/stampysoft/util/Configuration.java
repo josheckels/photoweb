@@ -45,6 +45,13 @@ public class Configuration
         }
     }
 
+    /**
+     * Values are trimmed. {@link Properties#load} discards whitespace <em>before</em> a value but keeps every
+     * character after it, so a line editor that pads to the end of the line silently produces a bucket named
+     * {@code "photo.jeckels.com          "} - which S3 answers with a 404 that looks like a missing object
+     * rather than a missing space. No setting here has ever wanted a leading or trailing space, and the file is
+     * hand-edited on a server, so trimming is the safe reading.
+     */
     public String getProperty(String key)
     {
         String result = _properties.getProperty(key);
@@ -52,16 +59,17 @@ public class Configuration
         {
             throw new ConfigurationException("Configuration property \"" + key + "\" was not set in config.properties");
         }
-        return result;
+        return result.trim();
     }
 
     /**
      * Returns the configured value, or defaultValue if the property isn't set. Use this for optional settings, so
-     * that a missing property degrades a feature instead of failing the whole application.
+     * that a missing property degrades a feature instead of failing the whole application. Trimmed, as above.
      */
     public String getProperty(String key, String defaultValue)
     {
-        return _properties.getProperty(key, defaultValue);
+        String result = _properties.getProperty(key);
+        return result == null ? defaultValue : result.trim();
     }
 
     private static Configuration g_configuration;

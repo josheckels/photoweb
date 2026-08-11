@@ -64,6 +64,61 @@ public class PhotoOperations
         return new HashSet<>((List<Integer>) query.getResultList());
     }
 
+    /** Every photo marked private. */
+    private Set<Integer> getPrivatePhotoIds()
+    {
+        Query query = getEntityManager().createQuery("select p.photoId from Photo p where p._private = true");
+        return new HashSet<>((List<Integer>) query.getResultList());
+    }
+
+    /**
+     * Every photo whose bytes are not simply public: the {@code private} ones, and the ones tagged with somebody
+     * who has opted out. A photo outside this set is visible to every visitor, so knowing the set means an image
+     * request for one can be answered without asking the database anything at all.
+     * <p>
+     * That matters because {@link com.stampysoft.photoGallery.controller.ImageController} runs once per
+     * <em>image</em> rather than once per page - around sixty times for a grid - and building a
+     * {@link Visibility} costs an opt-out scan every time. Nothing about the rule changes here: a photo in the
+     * set still goes through {@link #getPhoto} and {@link Visibility#canSee(Photo)} exactly as before. This is
+     * only a way of not asking a question whose answer is already known. See PROXY.md.
+     */
+    @Transactional(readOnly = true)
+    public Set<Integer> getRestrictedPhotoIds()
+    {
+        Restricted cached = _restrictedPhotoIds;
+        if (cached != null && System.currentTimeMillis() - cached.builtAt() < RESTRICTED_CACHE_TTL_MILLIS)
+        {
+            return cached.ids();
+        }
+
+        Set<Integer> ids = new HashSet<>(getOptOutHiddenPhotoIds());
+        ids.addAll(getPrivatePhotoIds());
+        Restricted rebuilt = new Restricted(Set.copyOf(ids), System.currentTimeMillis());
+        _restrictedPhotoIds = rebuilt;
+        return rebuilt.ids();
+    }
+
+    /**
+     * Forget the cached set, so the next image request rebuilds it. For the admin UI to call after changing a
+     * photo's private flag or a person's opt-out, which is the only thing that moves the set.
+     */
+    public void flushRestrictedPhotoIds()
+    {
+        _restrictedPhotoIds = null;
+    }
+
+    private record Restricted(Set<Integer> ids, long builtAt) {}
+
+    /**
+     * Rebuilt on a timer rather than invalidated precisely on every opt-out change and photo/category-link
+     * write, which is a deliberate downgrade from what PRIVACY.md sketches. It is safe because the inputs barely
+     * move - a photo's privacy and a person's opt-out get set once and then left alone - and because listings
+     * are unaffected either way: only a direct image URL can lag, and only until the next rebuild.
+     */
+    private static final long RESTRICTED_CACHE_TTL_MILLIS = 5 * 60 * 1000L;
+
+    private volatile Restricted _restrictedPhotoIds;
+
     /**
      * Every photo reachable from any of the given categories: a public category expands to its whole subtree, a
      * private one to itself alone.

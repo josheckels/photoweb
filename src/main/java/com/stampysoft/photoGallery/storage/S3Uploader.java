@@ -1,7 +1,6 @@
 package com.stampysoft.photoGallery.storage;
 
 import com.stampysoft.util.Configuration;
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -42,6 +41,7 @@ public final class S3Uploader {
         String prefix = "";
         Region region;
         S3Client client = null;
+        String auth = "unresolved";
         boolean ok = false;
         try {
             Configuration cfg = Configuration.getConfiguration();
@@ -56,8 +56,9 @@ public final class S3Uploader {
                 region = Region.of(regionStr);
                 client = S3Client.builder()
                         .region(region)
-                        .credentialsProvider(DefaultCredentialsProvider.create())
+                        .credentialsProvider(S3Credentials.provider(cfg))
                         .build();
+                auth = S3Credentials.describe(cfg);
                 ok = true;
             }
         } catch (Throwable e) {
@@ -75,7 +76,7 @@ public final class S3Uploader {
         }) : null;
 
         if (enabled) {
-            log("S3Uploader enabled (auth=DefaultCredentialsProvider, region=" + regionStr + "). originalsBucket=" + this.originalsBucket + ", resizedBucket=" + this.resizedBucket);
+            log("S3Uploader enabled (auth=" + auth + ", region=" + regionStr + "). originalsBucket=" + this.originalsBucket + ", resizedBucket=" + this.resizedBucket);
         } else {
             log("S3Uploader disabled (missing config or AWS SDK issue). Uploads will be skipped.");
         }
