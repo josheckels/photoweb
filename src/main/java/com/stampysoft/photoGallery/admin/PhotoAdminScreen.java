@@ -138,6 +138,8 @@ public class PhotoAdminScreen extends AbstractPanel
         startLeftColumnAtDefaultWidth(mainSplitPane);
         add(mainSplitPane, BorderLayout.CENTER);
 
+        add(new AdminStatusBar(), BorderLayout.SOUTH);
+
         refreshDefaultPhotoButtonStatus();
     }
 
@@ -489,8 +491,7 @@ public class PhotoAdminScreen extends AbstractPanel
                             return;
                         }
                     }
-                    category.setDefaultPhoto(currentPhoto);
-                    AdminModel.getModel().saveCategory(category);
+                    AdminModel.getModel().setDefaultPhoto(category, currentPhoto);
                 }
             }
         });

@@ -411,6 +411,45 @@ public class PhotoOperations
     }
 
     /**
+     * Points a category at a new cover photo, by id, without merging the caller's copy of either.
+     * <p>
+     * The admin holds detached Category instances for as long as the tree is open, so merging one back writes
+     * everything that has gone stale on it alongside the change actually being asked for. Loading the row here
+     * keeps the write to the one column this is about.
+     */
+    @Transactional
+    public void setDefaultPhoto(Category category, Photo photo)
+    {
+        Category managed = getEntityManager().find(Category.class, category.getCategoryId());
+        if (managed == null)
+        {
+            return;
+        }
+        managed.setDefaultPhoto(photo == null ? null : getEntityManager().find(Photo.class, photo.getPhotoId()));
+    }
+
+    /**
+     * The parent of the given category, or null if it's a root.
+     * <p>
+     * Deliberately a query rather than a {@link #merge}: merge in a read-write transaction copies the whole
+     * detached copy's state onto the row and flushes it at commit, so reaching it from something as innocuous as
+     * {@link Category#toString()} silently reverts whatever else has changed since that copy was loaded - a
+     * category's cover photo, most visibly.
+     */
+    @Transactional(readOnly = true)
+    public Category getParentCategory(Category category)
+    {
+        if (category.getCategoryId() == null)
+        {
+            return null;
+        }
+        Query query = getEntityManager().createQuery("select p from Category c join c.parentCategory p where c.categoryId = :categoryId");
+        query.setParameter("categoryId", category.getCategoryId());
+        List<Category> results = (List<Category>) query.getResultList();
+        return results.isEmpty() ? null : results.get(0);
+    }
+
+    /**
      * Deletes a category, its descendant categories, and its photos' membership of all of them - the parent link and
      * the join table both cascade in the database. The photos themselves are left alone.
      * <p>

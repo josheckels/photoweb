@@ -46,7 +46,14 @@ final class ShareTokenCookie
     {
     }
 
-    /** The tokens this visitor is holding, oldest first. Empty for anyone who has never used a share link. */
+    /**
+     * The tokens this visitor is holding, oldest first. Empty for anyone who has never used a share link.
+     * <p>
+     * Capped at {@link #MAX_TOKENS} here as well as in {@link #add}, because what arrives is whatever the client
+     * chose to send rather than only what we last wrote: every request turns this list into an {@code in} clause
+     * in two queries, so an oversized cookie would make each request cost whatever the header limit allows. The
+     * newest are kept, matching {@link #add}'s eviction.
+     */
     static List<String> read(HttpServletRequest request)
     {
         Cookie[] cookies = request.getCookies();
@@ -66,7 +73,9 @@ final class ShareTokenCookie
                         tokens.add(token);
                     }
                 }
-                return tokens;
+                return tokens.size() <= MAX_TOKENS
+                        ? tokens
+                        : new ArrayList<>(tokens.subList(tokens.size() - MAX_TOKENS, tokens.size()));
             }
         }
         return List.of();

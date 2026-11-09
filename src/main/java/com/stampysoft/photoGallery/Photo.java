@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.stampysoft.photoGallery.admin.AdminFrame;
 import com.stampysoft.photoGallery.common.Resolution;
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 import com.stampysoft.photoGallery.storage.S3Uploader;
 
 import javax.imageio.IIOImage;
@@ -40,6 +41,8 @@ import java.util.*;
 import java.util.List;
 
 @Entity @Table(name="photo")
+// Loaded by id in bulk when a list of categories resolves their eager default photos; see Category.
+@BatchSize(size = 100)
 @JsonFilter("photoFilter")
 @JsonAutoDetect(fieldVisibility= JsonAutoDetect.Visibility.NONE,
         getterVisibility= JsonAutoDetect.Visibility.NONE, isGetterVisibility= JsonAutoDetect.Visibility.NONE)

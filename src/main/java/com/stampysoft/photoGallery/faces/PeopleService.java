@@ -148,9 +148,11 @@ public class PeopleService
             return new ArrayList<>();
         }
 
-        Set<Integer> personIds = getPersonCategoryIds();
+        // One load of the category table serves both the tree walk and the result
+        List<Category> allCategories = _photoOperations.getAllCategories(Visibility.OWNER, false);
+        Set<Integer> personIds = collectPersonCategoryIds(rootId, allCategories);
         List<Category> result = new ArrayList<>();
-        for (Category category : _photoOperations.getAllCategories(Visibility.OWNER, false))
+        for (Category category : allCategories)
         {
             if (personIds.contains(category.getCategoryId()))
             {
@@ -174,7 +176,11 @@ public class PeopleService
             return new LinkedHashSet<>();
         }
 
-        List<Category> allCategories = _photoOperations.getAllCategories(Visibility.OWNER, false);
+        return collectPersonCategoryIds(rootId, _photoOperations.getAllCategories(Visibility.OWNER, false));
+    }
+
+    private Set<Integer> collectPersonCategoryIds(Integer rootId, List<Category> allCategories)
+    {
         Map<Integer, List<Category>> childrenByParent = new HashMap<>();
         for (Category category : allCategories)
         {

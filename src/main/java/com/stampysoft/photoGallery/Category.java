@@ -14,6 +14,8 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.stampysoft.photoGallery.admin.AdminFrame;
 import com.stampysoft.photoGallery.common.BaseCategory;
 import jakarta.persistence.*;
+import org.hibernate.Hibernate;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.*;
 
@@ -22,6 +24,9 @@ import java.util.*;
  */
 @Entity
 @Table(name = "category")
+// Every category drags in its parent and default photo eagerly, so without this loading the whole table issued a
+// select per category - about 1,450 of them, several times per face named in the admin UI.
+@BatchSize(size = 100)
 @JsonFilter("categoryFilter")
 @JsonAutoDetect(fieldVisibility= JsonAutoDetect.Visibility.NONE,
         getterVisibility= JsonAutoDetect.Visibility.NONE, isGetterVisibility= JsonAutoDetect.Visibility.NONE)
@@ -69,21 +74,46 @@ public class Category extends BaseCategory implements Comparable<Category>
         return getParentCategory() == null ? null : getParentCategory().getCategoryId();
     }
 
+    /**
+     * The categories above this one, root first. Mutable, because {@link #compareTo} appends to it.
+     * <p>
+     * Walks the parent chain already in memory: {@code parentCategory} is an eager {@code @ManyToOne}, so loading
+     * a category loads its ancestors along with it and there is nothing here to ask the database for. It used to
+     * call {@code PhotoOperations.merge(this)} per level, which was both a transaction per level and a write -
+     * merge copies the whole detached copy onto the row and flushes it at commit, so this method, reached from
+     * {@link #toString()} and {@link #compareTo}, silently reverted whatever had changed on the row since that
+     * copy was loaded. Every {@code TreeSet<Category>} in the admin pays for this through {@code compareTo}, and
+     * a category's cover photo was what most visibly got reverted.
+     * <p>
+     * Reading in-memory state means a copy that predates somebody reparenting a category shows the old path. The
+     * chain is only ever used for display and ordering, so that isn't worth a query per comparison.
+     */
     public List<Category> getPathToRoot()
     {
+        List<Category> result = new ArrayList<>();
         if (categoryId == null)
         {
-            return Collections.emptyList();
+            return result;
         }
-        Category mergedThis = AdminFrame.getFrame().getPhotoOperations().merge(this);
-        Category parentCategory = mergedThis.getParentCategory();
-        if (parentCategory == null)
+        for (Category ancestor = parentOf(this); ancestor != null; ancestor = parentOf(ancestor))
         {
-            return new ArrayList<>();
+            result.add(0, ancestor);
         }
-        List<Category> result = parentCategory.getPathToRoot();
-        result.add(parentCategory);
         return result;
+    }
+
+    /**
+     * The given category's parent, or null if it's a root. Goes to the database only for the case the in-memory
+     * copy can't answer - a detached instance whose association was never initialized - and never through
+     * {@code merge}, so this stays a read.
+     */
+    private static Category parentOf(Category category)
+    {
+        if (Hibernate.isInitialized(category.parentCategory))
+        {
+            return category.parentCategory;
+        }
+        return AdminFrame.getFrame().getPhotoOperations().getParentCategory(category);
     }
 
     public Category getParentCategory()

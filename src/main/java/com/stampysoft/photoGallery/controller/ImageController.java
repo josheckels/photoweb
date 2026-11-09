@@ -51,6 +51,23 @@ public class ImageController extends AbstractController
     /** Long enough to be useful while browsing, short enough that a re-import shows up the same day. */
     private static final Duration LOCAL_CACHE_LIFETIME = Duration.ofDays(1);
 
+    /**
+     * The longest a browser may hold on to one of these redirects, however much life the URL inside it has left.
+     * <p>
+     * The redirect is the only part of this that can be corrected after the fact: the signed URL it names is
+     * already in browser caches, and nothing we do reaches it. So the redirect is where the blast radius of a
+     * bad one gets set. A browser that has poisoned its entry for one image - Safari can do this, taking a 304
+     * for a body it no longer holds and drawing the broken-image placeholder - is stuck with it until the URL
+     * rotates out from under it, because a new signature is a new cache key and the only thing that forces an
+     * unconditional fetch. At the URL's full three days that is three days of a broken thumbnail. An hour
+     * bounds it at an hour.
+     * <p>
+     * It costs a conditional round trip per image per hour, which is a 302 with no body and, for a photo nobody
+     * is hiding, no database work either - see {@link PhotoOperations#getRestrictedPhotoIds()}. The image bytes
+     * behind it are cached for a year and are not re-fetched.
+     */
+    private static final long MAX_REDIRECT_CACHE_SECONDS = Duration.ofHours(1).toSeconds();
+
     @Autowired
     private PhotoOperations photoOperations;
 
@@ -169,8 +186,9 @@ public class ImageController extends AbstractController
     }
 
     /**
-     * 302 to a presigned URL, cached by the browser until that URL is next rotated. The redirect carries no
-     * body, so a visitor who has been here this week pays nothing and everyone else pays one small round trip.
+     * 302 to a presigned URL, cached by the browser for up to {@link #MAX_REDIRECT_CACHE_SECONDS} and never past
+     * the point where that URL rotates. The redirect carries no body, so a visitor who has been here this hour
+     * pays nothing and everyone else pays one small round trip.
      */
     private ResponseEntity<?> redirect(java.util.function.Function<S3ImagePresigner, S3ImagePresigner.PresignedUrl> which)
     {
@@ -193,9 +211,10 @@ public class ImageController extends AbstractController
             return misconfigured("could not sign an S3 URL - check S3Profile and aws.sharedCredentialsFile", e);
         }
 
+        long maxAge = Math.min(url.maxAgeSeconds(), MAX_REDIRECT_CACHE_SECONDS);
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create(url.url()))
-                .cacheControl(CacheControl.maxAge(Duration.ofSeconds(url.maxAgeSeconds())).cachePrivate())
+                .cacheControl(CacheControl.maxAge(Duration.ofSeconds(maxAge)).cachePrivate())
                 .build();
     }
 
@@ -239,14 +258,18 @@ public class ImageController extends AbstractController
     }
 
     /**
-     * A 500 that says what is wrong. The default would be Spring's whitelabel page, which reports only that
-     * something threw - and every image on the site failing at once deserves better than that.
+     * A 500 that says what is wrong <em>in the log</em>. The default would be Spring's whitelabel page, which
+     * reports only that something threw - and every image on the site failing at once deserves better than that.
+     * <p>
+     * The detail stays out of the response because the response is public: which credentials file was consulted
+     * and which config key is missing is the operator's business, and naming them to an anonymous visitor tells
+     * them about the inside of the machine. The log is where the person who can act on it is looking anyway.
      */
     private static ResponseEntity<?> misconfigured(String problem, Throwable cause)
     {
         log(problem, cause);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Image serving misconfigured: " + problem + ". See PROXY.md.\n");
+                .body("Image serving is misconfigured. See the server log.\n");
     }
 
     private static void log(String message, Throwable cause)

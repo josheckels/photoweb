@@ -50,6 +50,18 @@ public class FaceNameCombo
         _editor = (JTextComponent) _combo.getEditor().getEditorComponent();
         _editor.addKeyListener(new KeyAdapter()
         {
+            /**
+             * Enter takes the highlighted row. Key listeners run before the combo's own Enter binding and before the
+             * dialog's default button, so the name is in the field by the time either of them reads it.
+             */
+            public void keyPressed(KeyEvent e)
+            {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER)
+                {
+                    copyHighlightedNameToField();
+                }
+            }
+
             public void keyReleased(KeyEvent e)
             {
                 if (e.getKeyCode() == KeyEvent.VK_DOWN || e.getKeyCode() == KeyEvent.VK_UP)
@@ -93,11 +105,32 @@ public class FaceNameCombo
         setTypedName("");
     }
 
-    /** Whatever's currently typed or selected, trimmed. */
+    /**
+     * Whatever's currently typed or selected, trimmed - or, when that's only part of one existing person's name,
+     * that person's full name.
+     * <p>
+     * Typing a first name is the usual way to find somebody, and it matches the end of "Kazarovich, Rosie" rather
+     * than the start, so nothing is filled in after the caret. Without this, accepting the one name left in the list
+     * would hand back "Rosie" and offer to create a new person by that name. Text matching several people, or
+     * none, is left as typed, so a genuinely new name still gets the offer to create it.
+     */
     public String getTypedName()
     {
         Object value = _combo.getEditor().getItem();
-        return value == null ? "" : value.toString().trim();
+        String typed = value == null ? "" : value.toString().trim();
+        if (typed.isEmpty())
+        {
+            return typed;
+        }
+        for (String name : _names)
+        {
+            if (name.equalsIgnoreCase(typed))
+            {
+                return name;
+            }
+        }
+        List<String> matches = findMatches(typed);
+        return matches.size() == 1 ? matches.get(0) : typed;
     }
 
     /** Puts a name in the field as if it had been picked, and restores the full list to choose from. */
@@ -194,7 +227,27 @@ public class FaceNameCombo
             _editor.setCaretPosition(completion.length());
             _editor.moveCaretPosition(typed.length());
         }
-        _combo.setPopupVisible(!typed.isEmpty() && !matches.isEmpty() && !isSettled(matches, typed));
+        boolean showList = !typed.isEmpty() && !matches.isEmpty() && !isSettled(matches, typed);
+        _combo.setPopupVisible(showList);
+        if (showList)
+        {
+            highlightFirstMatch();
+        }
+    }
+
+    /**
+     * Highlights the closest match in the open dropdown, so Enter has something visible to take - the popup otherwise
+     * opens with no row highlighted, and Enter keeps the bare text. It's the same name as any inline completion,
+     * since both are the first name in the list that starts with what's been typed.
+     */
+    private void highlightFirstMatch()
+    {
+        JList<Object> list = getPopupList();
+        if (list != null && list.getModel().getSize() > 0)
+        {
+            list.setSelectedIndex(0);
+            list.ensureIndexIsVisible(0);
+        }
     }
 
     /**

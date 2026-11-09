@@ -53,6 +53,27 @@ public class PhotoInfoPanel extends AbstractPanel
     /** Where each face landed in the displayed image, so that a click can be turned back into a face. */
     private java.util.List<FaceBox> _faceBoxes = java.util.List.of();
 
+    /**
+     * The preview as it was before the outlines and names went on, at the same resolution. The selected face is
+     * redrawn from this so it's never hidden under a neighbour's label.
+     */
+    private BufferedImage _cleanPreview = null;
+
+    /** The resized image the preview was scaled down from, which the zoom on the selected face is cut from. */
+    private BufferedImage _previewSource = null;
+
+    /**
+     * True while a face's menu or name dialog is up. Either one takes focus off the preview, which would otherwise
+     * take the zoom away at exactly the moment it's needed.
+     */
+    private boolean _faceInteractionActive = false;
+
+    /**
+     * Set once a face has been named, so its zoom goes away while the ring stays on it - the arrow keys still carry
+     * on from there. Choosing a face again, by click or arrow key, brings the zoom back.
+     */
+    private boolean _zoomDismissed = false;
+
     /** The unconfirmed matches on the displayed photo, which is what the accept button acts on. */
     private java.util.List<PhotoFace> _proposedFaces = java.util.List.of();
 
@@ -364,6 +385,11 @@ public class PhotoInfoPanel extends AbstractPanel
             @Override
             public void mousePressed(MouseEvent e)
             {
+                if (e.getButton() == MouseEvent.BUTTON1 && !e.isPopupTrigger() && findFaceAt(e.getPoint()) == null)
+                {
+                    clearFaceSelection();
+                    return;
+                }
                 maybeShowFaceMenu(e);
             }
 
@@ -413,6 +439,14 @@ public class PhotoInfoPanel extends AbstractPanel
      */
     private PhotoFace findFaceAt(java.awt.Point point)
     {
+        // The zoom sits on top of other faces, so a click on it means the face it's showing, not whatever's beneath
+        FaceBox selected = findSelectedBox();
+        Rectangle zoom = selected == null ? null : getZoomBounds(selected);
+        if (zoom != null && zoom.contains(point))
+        {
+            return selected.face();
+        }
+
         Point origin = getImageOrigin();
         if (origin == null || _faceBoxes.isEmpty())
         {
@@ -594,10 +628,20 @@ public class PhotoInfoPanel extends AbstractPanel
         return ordered.isEmpty() ? null : ordered.get(0).face();
     }
 
+    /**
+     * Takes the ring and the zoom off, for a click on the photo away from any face. Focus stays on the preview, so
+     * the arrow keys pick up again from the first undecided face.
+     */
+    private void clearFaceSelection()
+    {
+        selectFace(null);
+    }
+
     /** Puts the keyboard on this face and draws it as selected. Pass null to clear. */
     private void selectFace(PhotoFace face)
     {
         _selectedFaceId = face == null ? null : face.getFaceId();
+        _zoomDismissed = false;
         _photoLabel.repaint();
     }
 
@@ -770,17 +814,32 @@ public class PhotoInfoPanel extends AbstractPanel
             @Override
             public void popupMenuWillBecomeVisible(javax.swing.event.PopupMenuEvent e)
             {
+                _faceInteractionActive = true;
+                _photoLabel.repaint();
             }
 
             @Override
             public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e)
             {
+                _faceInteractionActive = false;
+                _photoLabel.repaint();
                 SwingUtilities.invokeLater(() -> _photoLabel.requestFocusInWindow());
             }
 
             @Override
             public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e)
             {
+                // Clicking outside a menu closes it, and on some look and feels the click is used up doing so and
+                // never reaches the preview. Act on it here so one click on bare photo clears everything; Escape
+                // cancels too, but it isn't a mouse event, so it leaves the selection alone.
+                if (EventQueue.getCurrentEvent() instanceof MouseEvent mouse && mouse.getID() == MouseEvent.MOUSE_PRESSED)
+                {
+                    Point point = SwingUtilities.convertPoint(mouse.getComponent(), mouse.getPoint(), _photoLabel);
+                    if (_photoLabel.contains(point) && findFaceAt(point) == null)
+                    {
+                        SwingUtilities.invokeLater(PhotoInfoPanel.this::clearFaceSelection);
+                    }
+                }
             }
         });
         menu.show(_photoLabel, x, y);
@@ -809,6 +868,7 @@ public class PhotoInfoPanel extends AbstractPanel
             // A different photo, so the face the keyboard was on has gone with it. The same photo redrawn - after a
             // resize, or after a face was named - keeps the selection, which is re-resolved once the boxes are back.
             _selectedFaceId = null;
+            _zoomDismissed = false;
         }
         _displayedPhoto = photo;
         _faceBoxes = java.util.List.of();
@@ -817,6 +877,8 @@ public class PhotoInfoPanel extends AbstractPanel
         if (photo == null)
         {
             _photoLabel.setIcon(null);
+            _cleanPreview = null;
+            _previewSource = null;
             return;
         }
 
@@ -830,6 +892,8 @@ public class PhotoInfoPanel extends AbstractPanel
 
         Runnable r = () -> {
             Icon thumbnail = null;
+            BufferedImage clean = null;
+            BufferedImage source = null;
             java.util.List<FaceBox> boxes = java.util.List.of();
             // Loaded whether or not the overlay is switched on, because the accept button has to know about the
             // proposals either way - otherwise turning "Show faces" off would quietly hide what there is to accept.
@@ -841,6 +905,8 @@ public class PhotoInfoPanel extends AbstractPanel
                 Preview preview = createPreview(photo, labelSize, deviceScale);
                 BufferedImage scaled = preview.image();
                 Dimension logicalSize = preview.logicalSize();
+                clean = scaled;
+                source = preview.source();
                 if (showFaces)
                 {
                     // Laid out in logical pixels so that a click maps straight back onto a box, then drawn through
@@ -848,6 +914,8 @@ public class PhotoInfoPanel extends AbstractPanel
                     boxes = layOutFaces(faces, logicalSize.width, logicalSize.height);
                     if (!boxes.isEmpty())
                     {
+                        // Drawn onto a copy, so the untouched one is still there to show the selected face from
+                        scaled = copyOf(clean);
                         drawFaceBoxes(scaled, boxes, (double) scaled.getWidth() / logicalSize.width);
                     }
                 }
@@ -859,12 +927,16 @@ public class PhotoInfoPanel extends AbstractPanel
             }
 
             final Icon icon = thumbnail;
+            final BufferedImage loadedClean = clean;
+            final BufferedImage loadedSource = source;
             final java.util.List<FaceBox> loadedBoxes = boxes;
             SwingUtilities.invokeLater(() -> {
                 // Ignore a load that finished after the selection moved on
                 if (generation == _thumbnailGeneration)
                 {
                     _photoLabel.setIcon(icon);
+                    _cleanPreview = loadedClean;
+                    _previewSource = loadedSource;
                     _faceBoxes = loadedBoxes;
                     setProposedFaces(proposals);
                     restoreFaceSelection();
@@ -979,6 +1051,10 @@ public class PhotoInfoPanel extends AbstractPanel
      * <p>
      * Ignored faces are drawn rather than hidden because this is the only place they still appear, and so the only
      * place the decision can be taken back.
+     * <p>
+     * In a crowded group shot there's rarely room above every face for its name, and a name dropped straight above
+     * one face lands on the face behind it. So every outline goes down first, and then each name is placed wherever
+     * around its own box covers the least of the other faces and the names already placed.
      */
     private void drawFaceBoxes(BufferedImage image, java.util.List<FaceBox> boxes, double overlayScale)
     {
@@ -992,51 +1068,248 @@ public class PhotoInfoPanel extends AbstractPanel
             // written as though the image were that size and comes out at full resolution instead of being blown up.
             graphics.scale(overlayScale, overlayScale);
             graphics.setFont(graphics.getFont().deriveFont(Font.BOLD, 12f));
+            FontMetrics metrics = graphics.getFontMetrics();
+
             for (FaceBox box : boxes)
             {
-                PhotoFace face = box.face();
-                Color color;
-                String label;
-                if (face.isIgnored())
-                {
-                    color = new Color(150, 150, 150);
-                    label = "nobody";
-                }
-                else if (face.getPersonCategory() == null)
-                {
-                    color = new Color(220, 60, 60);
-                    label = "?";
-                }
-                else if (face.isConfirmed())
-                {
-                    color = new Color(60, 190, 90);
-                    label = face.getPersonCategory().getDescription();
-                }
-                else
-                {
-                    color = new Color(240, 180, 40);
-                    label = face.getPersonCategory().getDescription() +
-                            (face.getMatchScore() == null ? "?" : String.format(" %.2f?", face.getMatchScore()));
-                }
+                drawFaceOutline(graphics, box);
+            }
 
-                Rectangle bounds = box.bounds();
-                // In logical units, so this is 3 device pixels of crisp line on a retina screen rather than 2 fat ones
-                graphics.setStroke(new BasicStroke(1.5f));
-                graphics.setColor(color);
-                graphics.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
+            java.util.List<String> labels = new java.util.ArrayList<>();
+            for (FaceBox box : boxes)
+            {
+                labels.add(faceLabel(box.face()));
+            }
+            int logicalWidth = (int) Math.round(image.getWidth() / overlayScale);
+            int logicalHeight = (int) Math.round(image.getHeight() / overlayScale);
+            java.util.List<Rectangle> placements = placeLabels(boxes, labels, metrics, logicalWidth, logicalHeight);
 
-                int textWidth = graphics.getFontMetrics().stringWidth(label) + 6;
-                int textHeight = graphics.getFontMetrics().getHeight();
-                int textY = Math.max(0, bounds.y - textHeight);
-                graphics.fillRect(bounds.x, textY, textWidth, textHeight);
+            for (int i = 0; i < boxes.size(); i++)
+            {
+                Rectangle tag = placements.get(i);
+                graphics.setColor(faceColor(boxes.get(i).face()));
+                graphics.fillRect(tag.x, tag.y, tag.width, tag.height);
                 graphics.setColor(Color.BLACK);
-                graphics.drawString(label, bounds.x + 3, textY + graphics.getFontMetrics().getAscent());
+                graphics.drawString(labels.get(i), tag.x + 3, tag.y + metrics.getAscent());
             }
         }
         finally
         {
             graphics.dispose();
         }
+    }
+
+    /** One face's outline, in the colour that says how settled it is. */
+    private static void drawFaceOutline(Graphics2D graphics, FaceBox box)
+    {
+        Rectangle bounds = box.bounds();
+        // In logical units, so this is 3 device pixels of crisp line on a retina screen rather than 2 fat ones
+        graphics.setStroke(new BasicStroke(1.5f));
+        graphics.setColor(faceColor(box.face()));
+        graphics.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    }
+
+    private static Color faceColor(PhotoFace face)
+    {
+        if (face.isIgnored())
+        {
+            return new Color(150, 150, 150);
+        }
+        if (face.getPersonCategory() == null)
+        {
+            return new Color(220, 60, 60);
+        }
+        return face.isConfirmed() ? new Color(60, 190, 90) : new Color(240, 180, 40);
+    }
+
+    private static String faceLabel(PhotoFace face)
+    {
+        if (face.isIgnored())
+        {
+            return "nobody";
+        }
+        if (face.getPersonCategory() == null)
+        {
+            return "?";
+        }
+        if (face.isConfirmed())
+        {
+            return face.getPersonCategory().getDescription();
+        }
+        return face.getPersonCategory().getDescription() +
+                (face.getMatchScore() == null ? "?" : String.format(" %.2f?", face.getMatchScore()));
+    }
+
+    /**
+     * Chooses where each face's name goes: above or below its box at either end or the middle, or beside it,
+     * whichever covers the least. Covering another face costs the most, since hiding a face is what makes the
+     * overlay useless; covering a name already placed costs a little less; covering its own face is cheapest, and
+     * only happens when it's pushed there by the edge of the photo. Ties go to the earlier position in the list, so
+     * an uncrowded face gets its name above it on the left, as it always did.
+     * <p>
+     * Names are settled from the top of the photo down. It's greedy rather than optimal, but the face boxes are all
+     * known from the start, so it's only names avoiding names that depends on the order.
+     */
+    private static java.util.List<Rectangle> placeLabels(java.util.List<FaceBox> boxes, java.util.List<String> labels,
+                                                         FontMetrics metrics, int width, int height)
+    {
+        int textHeight = metrics.getHeight();
+        Rectangle[] placed = new Rectangle[boxes.size()];
+        java.util.List<Integer> order = new java.util.ArrayList<>();
+        for (int i = 0; i < boxes.size(); i++)
+        {
+            order.add(i);
+        }
+        order.sort(java.util.Comparator.comparingInt(i -> boxes.get(i).bounds().y));
+
+        java.util.List<Rectangle> taken = new java.util.ArrayList<>();
+        for (int index : order)
+        {
+            Rectangle b = boxes.get(index).bounds();
+            int textWidth = metrics.stringWidth(labels.get(index)) + 6;
+            int above = b.y - textHeight - 1;
+            int below = b.y + b.height + 1;
+            int left = b.x;
+            int right = b.x + b.width - textWidth;
+            int middle = b.x + (b.width - textWidth) / 2;
+            int[][] candidates = {
+                    {left, above}, {right, above}, {middle, above},
+                    {left, below}, {right, below}, {middle, below},
+                    {b.x + b.width + 2, b.y}, {b.x - textWidth - 2, b.y},
+                    {b.x + b.width + 2, b.y + b.height - textHeight}, {b.x - textWidth - 2, b.y + b.height - textHeight},
+            };
+
+            Rectangle best = null;
+            long bestCost = Long.MAX_VALUE;
+            for (int k = 0; k < candidates.length; k++)
+            {
+                int x = Math.max(0, Math.min(candidates[k][0], width - textWidth));
+                int y = Math.max(0, Math.min(candidates[k][1], height - textHeight));
+                Rectangle tag = new Rectangle(x, y, textWidth, textHeight);
+
+                long cost = k;
+                for (int j = 0; j < boxes.size(); j++)
+                {
+                    // Grown by the stroke, so that sitting on top of another face's outline counts as covering it
+                    Rectangle face = new Rectangle(boxes.get(j).bounds());
+                    face.grow(1, 1);
+                    cost += (j == index ? 4L : 20L) * overlapArea(tag, face);
+                }
+                for (Rectangle other : taken)
+                {
+                    cost += 10L * overlapArea(tag, other);
+                }
+                if (cost < bestCost)
+                {
+                    bestCost = cost;
+                    best = tag;
+                }
+            }
+            placed[index] = best;
+            taken.add(best);
+        }
+        return java.util.Arrays.asList(placed);
+    }
+
+    private static long overlapArea(Rectangle a, Rectangle b)
+    {
+        Rectangle overlap = a.intersection(b);
+        return overlap.isEmpty() ? 0 : (long) overlap.width * overlap.height;
+    }
+
+    /** How far past the face's own box the zoom reaches on each side, as a fraction of the box. */
+    private static final float ZOOM_MARGIN = 0.35f;
+
+    /** The long edge of the zoom, in logical pixels. */
+    private static final int ZOOM_SIZE = 200;
+
+    /** The part of the source image the zoom on this face shows: the box, and a bit around it for context. */
+    private static Rectangle getZoomSourceRect(PhotoFace face, BufferedImage source)
+    {
+        int imageWidth = source.getWidth();
+        int imageHeight = source.getHeight();
+        // Normalized against the original, and every resized variant is a uniform scale of it
+        float marginX = face.getW() * ZOOM_MARGIN;
+        float marginY = face.getH() * ZOOM_MARGIN;
+        int left = Math.max(0, Math.round((face.getX() - marginX) * imageWidth));
+        int top = Math.max(0, Math.round((face.getY() - marginY) * imageHeight));
+        int right = Math.min(imageWidth, Math.round((face.getX() + face.getW() + marginX) * imageWidth));
+        int bottom = Math.min(imageHeight, Math.round((face.getY() + face.getH() + marginY) * imageHeight));
+        return new Rectangle(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
+    }
+
+    /** The zoom's picture size in logical pixels, keeping the shape of the region it shows. */
+    private static Dimension getZoomImageSize(Rectangle sourceRect, int maxSize)
+    {
+        double scale = (double) maxSize / Math.max(sourceRect.width, sourceRect.height);
+        return new Dimension(Math.max(1, (int) Math.round(sourceRect.width * scale)),
+                Math.max(1, (int) Math.round(sourceRect.height * scale)));
+    }
+
+    /**
+     * Where the zoom on the selected face goes in the label, including the name strip under it, or null if it
+     * shouldn't be shown.
+     * <p>
+     * It goes beside the face - right if there's room, then left, below, above - so that it never covers the face
+     * it's a zoom of. It's left off when the face is already about as big on screen as the zoom would make it, and
+     * once the face has been named, and whenever the preview doesn't have focus, so that a face left selected doesn't keep a panel over the photo
+     * while the caption is being typed. A menu or dialog about the face counts as having focus.
+     */
+    private Rectangle getZoomBounds(FaceBox box)
+    {
+        Point origin = getImageOrigin();
+        if (origin == null || _previewSource == null || _zoomDismissed
+                || !(_photoLabel.isFocusOwner() || _faceInteractionActive))
+        {
+            return null;
+        }
+        Rectangle sourceRect = getZoomSourceRect(box.face(), _previewSource);
+        int maxSize = Math.min(ZOOM_SIZE, Math.min(_photoLabel.getWidth(), _photoLabel.getHeight()) / 2);
+        Dimension image = getZoomImageSize(sourceRect, maxSize);
+        Rectangle bounds = box.bounds();
+        if (bounds.width * (1 + 2 * ZOOM_MARGIN) >= image.width * 0.75)
+        {
+            return null;
+        }
+
+        int captionHeight = _photoLabel.getFontMetrics(getZoomCaptionFont()).getHeight() + 2;
+        int width = image.width;
+        int height = image.height + captionHeight;
+        int gap = 10;
+        Rectangle face = new Rectangle(origin.x + bounds.x, origin.y + bounds.y, bounds.width, bounds.height);
+        int centreX = face.x + (face.width - width) / 2;
+        int centreY = face.y + (face.height - height) / 2;
+        int[][] candidates = {
+                {face.x + face.width + gap, centreY},
+                {face.x - gap - width, centreY},
+                {centreX, face.y + face.height + gap},
+                {centreX, face.y - gap - height},
+        };
+
+        Rectangle visible = new Rectangle(0, 0, _photoLabel.getWidth(), _photoLabel.getHeight());
+        Rectangle fallback = null;
+        for (int[] candidate : candidates)
+        {
+            int x = Math.max(4, Math.min(candidate[0], visible.width - width - 4));
+            int y = Math.max(4, Math.min(candidate[1], visible.height - height - 4));
+            Rectangle zoom = new Rectangle(x, y, width, height);
+            Rectangle ring = new Rectangle(face);
+            ring.grow(5, 5);
+            if (!zoom.intersects(ring))
+            {
+                return zoom;
+            }
+            if (fallback == null)
+            {
+                fallback = zoom;
+            }
+        }
+        return fallback;
+    }
+
+    private Font getZoomCaptionFont()
+    {
+        return _photoLabel.getFont().deriveFont(Font.BOLD, 12f);
     }
 
     /**
@@ -1061,7 +1334,18 @@ public class PhotoInfoPanel extends AbstractPanel
             combo.setTypedName(face.getPersonCategory().getDescription());
         }
 
-        String name = combo.showDialog(this, "Assign face", "Who is this?");
+        String name;
+        _faceInteractionActive = true;
+        _photoLabel.repaint();
+        try
+        {
+            name = combo.showDialog(this, "Assign face", "Who is this?");
+        }
+        finally
+        {
+            _faceInteractionActive = false;
+            _photoLabel.repaint();
+        }
         if (name == null)
         {
             return;
@@ -1092,6 +1376,8 @@ public class PhotoInfoPanel extends AbstractPanel
         saveCurrentPhoto();
         AdminFrame.getFrame().getPeopleService().assignFace(face, person);
         keepSelectionInStepWithTag(person);
+        _zoomDismissed = true;
+        _photoLabel.repaint();
 
         AdminModel.getModel().fireCategoryChanged(person);
         refreshAfterFaceChange();
@@ -1300,11 +1586,15 @@ public class PhotoInfoPanel extends AbstractPanel
     }
 
     /**
-     * The preview, with the keyboard's selection ring drawn over the top of the photo.
+     * The preview, with the selected face drawn over the top of the photo.
      * <p>
      * The coloured outlines are painted into the image itself, on the background thread that scales it, because
-     * they only change when the faces do. The ring is painted here instead: it moves with every arrow key, and
+     * they only change when the faces do. The selection is painted here instead: it moves with every arrow key, and
      * re-rendering the preview for that would mean decoding and rescaling a JPEG per keystroke.
+     * <p>
+     * Three things go on for the selected face: its own box is redrawn from the clean copy of the preview so no
+     * neighbour's name sits across it, the ring goes round it, and a zoom beside it shows the face larger with a
+     * little of what's around it.
      */
     private class PreviewLabel extends JLabel
     {
@@ -1324,7 +1614,12 @@ public class PhotoInfoPanel extends AbstractPanel
             try
             {
                 graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
                 Rectangle bounds = box.bounds();
+
+                revealFace(graphics, box, origin);
+
                 // Outside the face's own outline, so that the colour saying who this is stays readable
                 int x = origin.x + bounds.x - 3;
                 int y = origin.y + bounds.y - 3;
@@ -1341,11 +1636,107 @@ public class PhotoInfoPanel extends AbstractPanel
                         : new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 4f}, 0f));
                 graphics.setColor(Color.WHITE);
                 graphics.drawRect(x, y, width, height);
+
+                drawZoom(graphics, box);
             }
             finally
             {
                 graphics.dispose();
             }
+        }
+
+        /** Puts the selected face back as it is in the photo, over whatever names were drawn across it. */
+        private void revealFace(Graphics2D graphics, FaceBox box, Point origin)
+        {
+            BufferedImage clean = _cleanPreview;
+            Icon icon = getIcon();
+            if (clean == null || icon == null || icon.getIconWidth() <= 0)
+            {
+                return;
+            }
+            Rectangle region = new Rectangle(box.bounds());
+            region.grow(2, 2);
+            region = region.intersection(new Rectangle(0, 0, icon.getIconWidth(), icon.getIconHeight()));
+            if (region.isEmpty())
+            {
+                return;
+            }
+            double scale = (double) clean.getWidth() / icon.getIconWidth();
+            graphics.drawImage(clean,
+                    origin.x + region.x, origin.y + region.y,
+                    origin.x + region.x + region.width, origin.y + region.y + region.height,
+                    (int) Math.round(region.x * scale), (int) Math.round(region.y * scale),
+                    (int) Math.round((region.x + region.width) * scale),
+                    (int) Math.round((region.y + region.height) * scale), null);
+
+            Graphics2D outline = (Graphics2D) graphics.create();
+            try
+            {
+                outline.translate(origin.x, origin.y);
+                drawFaceOutline(outline, box);
+            }
+            finally
+            {
+                outline.dispose();
+            }
+        }
+
+        /**
+         * The face, enlarged, beside itself: cut from the resized image the preview came from rather than from the
+         * preview, so a face that's thirty pixels across on screen still has detail to show. The detected box is
+         * drawn in it, faintly, so that it's clear which face in a tight cluster this is.
+         */
+        private void drawZoom(Graphics2D graphics, FaceBox box)
+        {
+            Rectangle zoom = getZoomBounds(box);
+            BufferedImage source = _previewSource;
+            if (zoom == null || source == null)
+            {
+                return;
+            }
+            PhotoFace face = box.face();
+            Rectangle sourceRect = getZoomSourceRect(face, source);
+            Font font = getZoomCaptionFont();
+            FontMetrics metrics = getFontMetrics(font);
+            int captionHeight = metrics.getHeight() + 2;
+            int imageHeight = zoom.height - captionHeight;
+            Color color = faceColor(face);
+
+            graphics.setColor(new Color(0, 0, 0, 90));
+            graphics.fillRect(zoom.x + 3, zoom.y + 3, zoom.width, zoom.height);
+
+            graphics.drawImage(source, zoom.x, zoom.y, zoom.x + zoom.width, zoom.y + imageHeight,
+                    sourceRect.x, sourceRect.y, sourceRect.x + sourceRect.width, sourceRect.y + sourceRect.height,
+                    null);
+
+            double scaleX = (double) zoom.width / sourceRect.width;
+            double scaleY = (double) imageHeight / sourceRect.height;
+            int faceX = zoom.x + (int) Math.round((face.getX() * source.getWidth() - sourceRect.x) * scaleX);
+            int faceY = zoom.y + (int) Math.round((face.getY() * source.getHeight() - sourceRect.y) * scaleY);
+            int faceWidth = (int) Math.round(face.getW() * source.getWidth() * scaleX);
+            int faceHeight = (int) Math.round(face.getH() * source.getHeight() * scaleY);
+            graphics.setStroke(new BasicStroke(1f));
+            graphics.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), 140));
+            graphics.drawRect(faceX, faceY, faceWidth, faceHeight);
+
+            graphics.setColor(color);
+            graphics.fillRect(zoom.x, zoom.y + imageHeight, zoom.width, captionHeight);
+            graphics.setStroke(new BasicStroke(2f));
+            graphics.drawRect(zoom.x, zoom.y, zoom.width, zoom.height);
+
+            String caption = faceLabel(face);
+            int available = zoom.width - 8;
+            if (metrics.stringWidth(caption) > available)
+            {
+                while (caption.length() > 1 && metrics.stringWidth(caption + "…") > available)
+                {
+                    caption = caption.substring(0, caption.length() - 1);
+                }
+                caption = caption + "…";
+            }
+            graphics.setFont(font);
+            graphics.setColor(Color.BLACK);
+            graphics.drawString(caption, zoom.x + 4, zoom.y + imageHeight + 1 + metrics.getAscent());
         }
     }
 
@@ -1425,7 +1816,7 @@ public class PhotoInfoPanel extends AbstractPanel
      * The rendered preview, along with the size it will occupy on screen. The image itself is at the display's
      * device resolution, which on a retina monitor is bigger than the logical size by the backing scale factor.
      */
-    private record Preview(BufferedImage image, Dimension logicalSize) {}
+    private record Preview(BufferedImage image, Dimension logicalSize, BufferedImage source) {}
 
     /**
      * Reads a resized copy of the photo and scales it to fill the preview at the monitor's real resolution.
@@ -1452,7 +1843,7 @@ public class PhotoInfoPanel extends AbstractPanel
         // the icon just draws the native pixels into a larger box, which is no worse than before.
         int width = Math.min(imageSize.width, HiDpi.toDevicePixels(logical.width, deviceScale));
         int height = Math.min(imageSize.height, HiDpi.toDevicePixels(logical.height, deviceScale));
-        return new Preview(resample(img, width, height), logical);
+        return new Preview(resample(img, width, height), logical, img);
     }
 
     /**
@@ -1474,6 +1865,11 @@ public class PhotoInfoPanel extends AbstractPanel
             current = drawResized(current, width, height);
         }
         return drawResized(current, targetWidth, targetHeight);
+    }
+
+    private static BufferedImage copyOf(BufferedImage img)
+    {
+        return drawResized(img, img.getWidth(), img.getHeight());
     }
 
     private static BufferedImage drawResized(BufferedImage img, int width, int height)

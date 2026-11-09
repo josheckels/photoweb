@@ -1,6 +1,8 @@
 package com.stampysoft.photoGallery;
 
+import com.stampysoft.photoGallery.config.DatabaseChangeTracker;
 import org.hibernate.SessionFactory;
+import org.hibernate.cfg.AvailableSettings;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -33,6 +35,12 @@ public class HibernateConfig {
         HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
         em.setJpaVendorAdapter(vendorAdapter);
         em.setJpaProperties(hibernateProperties());
+
+        // Has to be registered here rather than through a HibernatePropertiesCustomizer bean: defining this
+        // EntityManagerFactory makes Spring Boot's JPA auto-configuration back off, and those customizers back off
+        // with it. Set on the property map rather than in hibernateProperties() below because the value is an
+        // object, not a string. See DatabaseChangeTracker, which checks at startup that this actually took.
+        em.getJpaPropertyMap().put(AvailableSettings.STATEMENT_INSPECTOR, DatabaseChangeTracker.newInspector());
 
         return em;
     }

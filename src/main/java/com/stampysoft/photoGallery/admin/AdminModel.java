@@ -187,6 +187,17 @@ public class AdminModel
         AdminFrame.getFrame().getPhotoOperations().saveCategory(category);
     }
 
+    /**
+     * Writes just the cover photo, and updates the caller's copy so the tree renders it straight away.
+     * Not saveCategory: that merges the whole detached category, which carries anything else that has gone stale
+     * on it back to the database along with the change.
+     */
+    public void setDefaultPhoto(Category category, Photo photo)
+    {
+        AdminFrame.getFrame().getPhotoOperations().setDefaultPhoto(category, photo);
+        category.setDefaultPhoto(photo);
+    }
+
     public void deleteCategory(Category category)
         throws SystemException, CategoryNotFoundException
     {
